@@ -1,2 +1,2 @@
 # HTML5-games
-HTML5 games when I worked as web developer
+HTML5 games when I worked as web developer at A&I Ltd
