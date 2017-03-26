@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<!--REFERENCE
+	http://www.sitepoint.com/image-manipulation-with-html5-canvas-a-sliding-puzzle-2/
+	https://www.cs.bham.ac.uk/~mdr/teaching/modules04/java2/TilesSolvability.html
+	http://www.sitepoint.com/randomizing-sliding-puzzle-tiles/
+-->
+<html>
+<head>
+	<meta charset = "UTF-8">
+	<title>sliding puzzle</title>
+	<style type="text/css">
+		canvas{
+			background: #eee;
+		}
+	</style>
+</head>
+<body>
+	<div style="position: relative;">
+		<canvas id="gameFrame" width="768" height="768" style="position: absolute; left: 0; top: 0;"></canvas>
+	</div>
+
+	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+	<script type="text/javascript" src="ebook_api.js"></script>
+
+	<script type="text/javascript">
+		var canvas = document.getElementById('gameFrame');
+		var context = canvas.getContext("2d");
+
+		canvas.width = canvas.height = Math.min( canvas.height, canvas.width, window.innerWidth, window.innerHeight, 768 );
+
+		var SUSPENDED = false;
+
+		var endImg = new Image();
+		endImg.src = "endScrn.png";
+
+		function drawEndScrn(){
+			var x = (canvas.width - endImg.width) / 2;
+			var y = (canvas.height - endImg.height) / 2;
+
+			setTimeout( function(){ 
+				// clearCanvas(); 
+				context.drawImage( endImg, x, y, endImg.width, endImg.height );
+
+				//draw Score
+				var fontSize = 30;
+				context.textAlign = "center";
+				context.fillStyle = "white";
+				context.font = fontSize + "px Arial";
+				context.fillText( score, canvas.width / 2 , y + endImg.height * 0.25);
+			}, 10 );
+		}
+
+		function replay(){
+			// SUSPENDED = false;
+			location.reload();
+		}
+
+		function home(){
+			history.back();
+		}
+
+		function endScrnClick( clickX, clickY ){
+			var startX = ( canvas.width - endImg.width ) / 2;
+			var startY = ( canvas.height - endImg.height ) / 2;
+
+			if( startY + endImg.height * 0.45 < clickY && clickY < startY + endImg.height * 0.8 ){
+				if( startX + endImg.width * 0.6 < clickX && clickX < startX + endImg.width * 0.8 ){
+					replay();
+				} else if( startX + endImg.width * 0.15 < clickX && clickX < startX + endImg.width * 0.35 ){
+					home();
+				}
+			}
+		}
+
+		var SIDE = 4;
+
+		// canvas.width = canvas.height = Math.min( window.innerWidth, window.innerHeight );
+
+		var imgSrcArray = [ "p03.png", "p04.png", "p05.png", "p06.png" ];
+
+		var img = new Image();
+		img.src = imgSrcArray[ ~~( Math.random() * imgSrcArray.length ) ];
+		img.clientWidth = canvas.width;
+		img.clientHeight = canvas.height;
+
+		loadRandImage();
+		setTimeout( function(){
+			globalInit();
+			canvas.addEventListener( "mousedown", mouseHandler, false );
+			canvas.addEventListener( "touchstart", touchHandler, false );
+		}, 5000);
+
+		function loadRandImage(){
+			var imgSrcString = imgSrcArray[ ~~( Math.random() *  imgSrcArray.length ) ];
+			img = new Image();
+			img.src = imgSrcString;
+		}
+
+		var score = 1000;
+
+		//to ensure image finish loading
+		img.addEventListener( "load", function(){
+			context.drawImage(img, 0, 0, canvas.width, canvas.height);
+		}, false );
+
+		var CELL_WIDTH = ~~( canvas.width / SIDE );
+
+		var grid = new Object;
+		var emptyLoc = new Object;
+		var clickLoc = new Object;
+		var solved = false;
+
+		globalInit();
+
+		function globalInit(){
+			SUSPENDED = false;
+			score = 1000;
+			grid = new Array( SIDE );
+			for (var i = 0; i < SIDE; i++) {
+				grid[i] = new Array( SIDE );
+				for( j = 0; j < SIDE; j++ ){
+					grid[i][j] = new Object;
+					grid[i][j].x = (SIDE-1) - i;
+					grid[i][j].y = (SIDE-1) - j;
+				}
+			};
+			shuffleTiles();
+			initEmpty();
+			
+			if( !isSolvable( SIDE, SIDE, emptyLoc.y + 1 ) ) {
+				if (emptyLoc.y == 0 && emptyLoc.x <= 1) {
+			    	swapTiles(SIDE - 2, SIDE - 1, SIDE - 1, SIDE - 1);
+			    } else {
+			    	swapTiles(0, 0, 1, 0);
+			    }
+			    initEmpty();
+			}
+
+			solved = false;
+
+			clickLoc.x = -1;
+			clickLoc.y = -1;
+
+			drawTiles();
+		}
+
+		////////////////////////////////////////////////////////////////////////////////////////////need more look here
+		function shuffleTiles(){
+			//Fisher-Yates algorithm
+			var i = SIDE * SIDE - 1;
+			while( i > 0 ){
+				var j = ~~( Math.random() * i );
+				var xi = i % SIDE;
+				var yi = ~~( i / SIDE );
+				var xj = j % SIDE;
+				var yj = ~~( j / SIDE );
+				swapTiles( xi, yi, xj, yj  );
+				--i;
+			}
+		}
+
+		function swapTiles( x1, y1, x2, y2 ){
+			var temp = new Object();
+			temp = grid[x1][y1];
+			grid[x1][y1] = grid[x2][y2];
+			grid[x2][y2] = temp;
+		}
+
+
+		function countInversions( i, j ){
+			var inv = 0;
+			var tileNum = j * SIDE + i;
+			var lastTile = SIDE * SIDE;
+			var tileVal = grid[i][j].y * SIDE + grid[i][j].x;
+
+			for( i = tileNum + 1; i < lastTile; i++ ){
+				var k = i % SIDE;
+				var l = ~~( i / SIDE );
+
+				var compVal = grid[k][l].y * SIDE + grid[k][l].x;
+				if( tileVal > compVal && tileVal != (lastTile - 1) ){
+					++ inv;
+				}
+			}
+			return inv;
+		}
+
+		function totalInversions(){
+			var inv = 0;
+			for (var i = 0; i < SIDE; i++) {
+				for( j = 0 ; j < SIDE; j++ ){
+					inv += countInversions( i, j );
+				}
+			};
+			return inv;
+		}
+
+		function isSolvable( width, height, emptyRow ){
+			if (width % 2 == 1) {
+		    	return (totalInversions() % 2 == 0)
+		    } else {
+		    	return ((totalInversions() + height - emptyRow) % 2 == 0)
+		    }
+		}
+
+		function initEmpty(){
+			for (var j = 0; j < SIDE; ++j) {
+				for (var i = 0; i < SIDE; ++i) {
+					if (grid[i][j].x == SIDE - 1 && grid[i][j].y == SIDE - 1) {
+						emptyLoc.x = i;
+						emptyLoc.y = j;
+					}
+				}
+			}
+		}
+		/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+		function drawTiles(){
+			clearCanvas();
+			for( i = 0; i < SIDE; i++ ){
+				for( j = 0; j < SIDE; j++ ){
+					var x = grid[i][j].x;
+					var y = grid[i][j].y;
+
+					if( i != emptyLoc.x || j != emptyLoc.y || solved ){
+						context.drawImage( img, 
+											x * img.width / SIDE, y * img.height / SIDE,
+											img.width / SIDE, img.height / SIDE,
+											i * CELL_WIDTH, j * CELL_WIDTH,
+											CELL_WIDTH, CELL_WIDTH);
+					}
+				}
+			}
+		}
+
+		function touchHandler( e ){
+			if( !SUSPENDED ){
+				if (e.touches.length === 0 ) return;
+				e.preventDefault();
+				e.stopPropagation();
+				var touch = e.touches[0];
+				
+				clickLoc.x = ~~( (touch.clientX - canvas.offsetLeft) / CELL_WIDTH );
+				clickLoc.y = ~~( (touch.clientY - canvas.offsetTop) / CELL_WIDTH );
+
+				if( distance( clickLoc.x, clickLoc.y, emptyLoc.x, emptyLoc.y ) == 1 ){
+					moveTiles( clickLoc, emptyLoc );
+					drawTiles();
+				}
+				if( solved ){
+					end();
+				}
+			} else {
+				endScrnClick( e.touches[0].clientX, e.touches[0].clientY );
+			}
+		}
+
+
+		function mouseHandler( e ){
+			if( !SUSPENDED ){
+				clickLoc.x = ~~( (e.pageX - canvas.offsetLeft) / CELL_WIDTH );
+				clickLoc.y = ~~( (e.pageY - canvas.offsetTop) / CELL_WIDTH );
+
+				if( distance( clickLoc.x, clickLoc.y, emptyLoc.x, emptyLoc.y ) == 1 ){
+					moveTiles( clickLoc, emptyLoc );
+					drawTiles();
+				}
+				if( solved ){
+					end();
+				}
+			} else {
+				endScrnClick( e.clientX, e.clientY );
+			}
+		}
+
+		function distance( x1, y1, x2, y2 ){
+			return Math.abs( x1 - x2 ) + Math.abs( y1 - y2 );
+		}
+
+		function end(){
+			//alert("Game Over! Your score is " + score + ".");
+			updateScore();
+			SUSPENDED = true;
+			submitResults( JSON.stringify( [ { "stage_num" : 1, "question_num" : 1, "score" : score, "correctness" : true, "student_answer" : score } ] ) );
+			setTimeout( function(){
+				drawEndScrn();
+			} , 5000 );
+			
+			//return globalInit();
+		}
+
+		function moveTiles( from, to ){
+			if( !solved ){
+				grid[to.x][to.y].x = grid[from.x][from.y].x;
+				grid[to.x][to.y].y = grid[from.x][from.y].y;
+
+				grid[from.x][from.y].x = SIDE - 1;
+				grid[from.x][from.y].y = SIDE - 1;
+
+				to.x = from.x;
+				to.y = from.y;
+				checkWin();
+			}
+		}
+
+		function checkWin(){
+			var win = true;
+			for ( i = 0; i < SIDE; i++ )
+				for( j = 0; j < SIDE; j++ )				
+					if( grid[i][j].x != i || grid[i][j].y != j ){
+						win = false;
+					}
+			solved = win;
+		}
+
+		function submitResults( data )
+		{
+		    // $('.response .data').text('');
+		    // $('.status .data').text('Loading...');
+
+		    //var data = $('.results textarea.data').val();
+		    var dataobj = null;
+		    try
+		    {
+		        dataobj = JSON.parse( data );
+		        //console.log( dataobj );
+		    }
+		    catch(e)
+		    {
+		        //$('.status .data').text('Invalid JSON');
+		        //alert(" Invalid JSON");
+		        return;
+		    }
+		    window.eitWebapp.submitResult(data, function(success, response) {
+		        if(success){
+		            //$('.status .data').text('Succeeded.');
+		            //alert("Succeeded.");
+
+		            //console.log(response);
+		            //$('.response .data').text(JSON.stringify(response, null, 4));
+		            //alert("JSON.stringify(response, null, 4)");
+		        }
+		        else {
+		            //$('.status .data').text('Failed.');
+		            //alert("Failed");
+		        }
+		    });
+		}
+
+	// function decScore(){
+	// 	if(score > 200) score -= 50;
+	// }
+
+	// setInterval( decScore, 5000 );
+
+	function updateScore(){
+		score = 0;
+		for ( i = 0; i < SIDE; i++ )
+			for( j = 0; j < SIDE; j++ )				
+				if( grid[i][j].x == i || grid[i][j].y == j ){
+					score += 100;
+				}
+	}
+
+	function clearCanvas(){
+		context.clearRect( 0, 0, canvas.width, canvas.height );
+	}
+
+	window.onbeforeunload = function(e) {
+		if( !SUSPENDED ){
+			submitResults( JSON.stringify( [ { "stage_num" : 1, "question_num" : 1, "score" : score, "correctness" : true, "student_answer" : score } ] ) );
+			return "You haven't finished the game!";
+		}
+    };
+	</script>
+</body>
+</html>

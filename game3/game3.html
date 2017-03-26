@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<!--references:
+	http://atomicrobotdesign.com/blog/htmlcss/build-a-vertical-scrolling-shooter-game-with-html5-canvas-part-1/
+	http://stackoverflow.com/questions/19244394/creating-a-timer-for-a-javascript-game-gives-undesirable-results
+	
+-->
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>shoot</title>
+    <style>
+    	* { padding: 0; margin: 0; }
+    	canvas { background: url('./starfield.jpg'); display: block; margin: 0 auto; }
+    </style>
+</head>
+<body>
+
+<div style="position: relative;">
+	<canvas id="gameFrame" width="1024" height="768" style="position: absolute; left: 0; top: 0;"></canvas>
+</div>
+<h1 id = "debug"></h1>
+
+<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+<script type="text/javascript" src="ebook_api.js"></script>
+
+<script type="text/javascript">
+	var canvas = document.getElementById("gameFrame");
+	var context = canvas.getContext("2d");
+	var MAX_ENEMIES_NUM = 5;
+	var MAX_LASER_NUM = 10;
+
+	var imgSrcArray = [ "ship_black.png", "ship_grey.png", "ship_orange.png" ];
+
+	var SUSPENDED = false;
+
+	var endImg = new Image();
+	endImg.src = "endScrn.png";
+
+	function drawEndScrn(){
+		var x = (canvas.width - endImg.width) / 2;
+		var y = (canvas.height - endImg.height) / 2;
+
+		setTimeout( function(){ 
+			clearCanvas(); 
+			context.drawImage( endImg, x, y, endImg.width, endImg.height );
+
+			//draw Score
+			var fontSize = 30;
+			context.textAlign = "center";
+			context.fillStyle = "white";
+			context.font = fontSize + "px Arial";
+			context.fillText( score, canvas.width / 2 , y + endImg.height * 0.25);
+		}, 10 );
+	}
+
+	function replay(){
+		SUSPENDED = false;
+		location.reload();
+	}
+
+	function home(){
+		history.back();
+	}
+
+	function endScrnClick( clickX, clickY ){
+		var startX = ( canvas.width - endImg.width ) / 2;
+		var startY = ( canvas.height - endImg.height ) / 2;
+
+		if( startY + endImg.height * 0.45 < clickY && clickY < startY + endImg.height * 0.8 ){
+			if( startX + endImg.width * 0.6 < clickX && clickX < startX + endImg.width * 0.8 ){
+				replay();
+			} else if( startX + endImg.width * 0.15 < clickX && clickX < startX + endImg.width * 0.35 ){
+				home();
+			}
+		}
+	}
+
+	canvas.width = 1024;
+	canvas.height = 768;
+
+	var canvasRatio = canvas.width / canvas.height;
+	var screenRatio = window.innerWidth / window.innerHeight;
+
+	if( screenRatio > canvasRatio ){
+		// canvas.width = canvas.width * window.innerHeight / canvas.height;
+		canvas.width = Math.min( 1024, canvas.width * window.innerHeight / canvas.height );
+		canvas.height = canvas.width / canvasRatio;
+	} else {
+		// canvas.width = window.innerWidth;
+		canvas.width = Math.min( 1024, window.innerWidth );
+		canvas.height = canvas.width / canvasRatio;
+	}
+
+	var GLOBAL_SPEED = 1;
+
+	var timer = {
+		timeRemain : 0,
+		tickTemp : 0,
+		setTimer : function(x){
+			this.timeRemain = x;
+		},
+		tick : function(){
+			this.tickTemp += 25;
+			if(this.tickTemp == 1000){
+				this.tickTemp = 0;
+				this.timeRemain--;
+			}
+		}
+	}
+	
+	//context.canvas.width = context.canvas.height = 600;
+	
+	var ship = {	
+		image : "ship.png",
+		//size of object
+		width : 50,
+		height : 50,
+		//position of object
+		x : canvas.width / 2 - 25,
+		y : canvas.height - 75,
+		//speed of object(for key press)
+		speed : 15,
+		//color of object
+		color : "#00FF00",
+		///function to update position of object
+		updatePos : function( i, j ) {
+			this.x = i;
+			this.y = j;
+		},
+		render : function( ctx ){
+			ctx.beginPath();
+			var imgElement = this.getImgElement();
+			ctx.drawImage( imgElement, this.x, this.y, 50, 50 );
+			
+			ctx.fillStyle = this.color;
+			ctx.fill();
+			ctx.closePath();
+		},
+		//move function
+		move : function( dir ){
+			var newx = this.x;
+			var newy = this.y;
+			switch ( dir ){
+				case "up":
+					if( this.y > 0 ) {
+						newy -= this.speed;
+					}
+					break;
+				case "down":
+					if( this.y < (canvas.height - this.height) ) {
+						newy += this.speed;
+					}
+					break;
+				case "left":
+					if( this.x > 0 ) {
+						newx -= this.speed;
+					}
+					break;
+				case "right":
+					if( this.x < (canvas.width - this.width) ) {
+						newx += this.speed;
+					}
+					break;
+			}
+			this.updatePos( newx, newy );
+		},
+		//Init
+		init : function(){
+			this.image = "ship.png";
+			this.width = 50;
+			this.x = canvas.width / 2 - 25;
+			this.y = canvas.height - 75;
+		},
+		getImgElement : function(){
+			var img = document.createElement('img'); // use DOM HTMLImageElement
+			img.src = this.image;
+			img.alt = 'alt text';
+			return img;
+		},
+		shoot : function(){
+			if( laserArray.length < MAX_LASER_NUM ){
+				var l = Object.create( laser );
+				l.init( this.x + 25, this.y - 20, 4, 20 ),
+				laserArray.push( l );
+			}
+		},
+		touch : function( enemy ){
+			
+			var al = this.x;
+			var ar = this.x + this.width;
+			var bl = enemy.x;
+			var br = enemy.x + enemy.width;
+			
+			var au = this.y;
+			var ad = this.y + this.height;
+			var bu = enemy.y;
+			var bd = enemy.y + enemy.height;
+			
+			if (bl > ar || br < al) {
+				return false;
+			} //overlap not possible
+			if (bu > ad || bd < au) {
+				return false;
+			} //overlap not possible 
+			return true;
+		},
+		updatePos : function( i, j ){
+			this.x = i;
+			this.y = j;
+		},
+	}
+	
+	var enemy = {
+		alive : true,
+		image : "8bit_enemy.png",
+		x : canvas.width / 12,
+		y : -45,
+		width : 50,
+		height : 50,
+		speed : GLOBAL_SPEED, 
+		color : "#f00",
+		render : function( ctx ){
+			ctx.beginPath();
+			var imgElement = this.getImgElement();
+			ctx.drawImage( imgElement, this.x, this.y );
+			
+			ctx.fillStyle = this.color;
+			ctx.fill();
+			ctx.closePath();
+		},
+		getImgElement : function(){
+			var img = document.createElement('img'); // use DOM HTMLImageElement
+			img.src = this.image;
+			img.alt = 'alt text';
+			img.width = this.width;
+			img.height = this.height;
+			return img;
+		},
+	}
+	
+	var laser = {
+		alive : true,
+		x : -1,
+		y : -1,
+		width : 0,
+		height : 0,
+		speed : 20,
+		color : "red",
+		init : function( x, y, width, height ){
+			this.x = x;
+			this.y = y;
+			this.width = width;
+			this.height = height;
+		},
+		render : function( ctx ){
+			ctx.beginPath();
+			ctx.rect(this.x, this.y, this.width, this.height);		
+			ctx.fillStyle = this.color;
+			ctx.fill();
+			ctx.closePath();
+		},
+		touch : function( enemy ){
+			
+			var al = this.x;
+			var ar = this.x + this.width;
+			var bl = enemy.x;
+			var br = enemy.x + enemy.width;
+			
+			var au = this.y;
+			var ad = this.y + this.height;
+			var bu = enemy.y;
+			var bd = enemy.y + enemy.height;
+			
+			if (bl > ar || br < al) {
+				return false;
+			} //overlap not possible
+			if (bu > ad || bd < au) {
+				return false;
+			} //overlap not possible 
+			return true;
+			
+		},
+	}
+	
+	function createEnemies(){
+		//store starting pos of enemies for init
+		var initX;
+		for( index = 0; index < MAX_ENEMIES_NUM ; index++ ){
+			if( index == 0 ){
+				var e = Object.create( enemy );
+				e.alive = true;
+				initX = e.x;
+				e.speed = GLOBAL_SPEED;
+				e.image = imgSrcArray[ ~~( Math.random * imgSrcArray.length ) ];
+				enemyArray.push( e );
+			}else{
+				var e = Object.create( enemy );
+				e.alive = true;
+				initX += e.width + (canvas.width / 1.5 ) / MAX_ENEMIES_NUM;
+				e.x = initX;
+				e.speed = GLOBAL_SPEED;
+				e.image = imgSrcArray[ ~~( Math.random * imgSrcArray.length ) ];
+				enemyArray.push( e );
+			}
+		}
+	}
+	
+	function drawAllEnemies(){
+		for( index = 0; index < enemyArray.length ; index++ ){
+			if( enemyArray[index].alive == false )
+				enemyArray.splice( index, 1 );
+			else
+				enemyArray[index].render( context );
+		}	
+	}
+	
+	function moveEnemies() {
+		for( index = 0; index < enemyArray.length ; index++ ){
+			if( enemyArray[index].y < canvas.height )
+				enemyArray[index].y += enemyArray[index].speed;
+			else if( enemyArray[index].y >= canvas.height ){
+				enemyArray[index].y += enemyArray[index].speed;
+				enemyArray[index].y = -45;
+			}
+		}
+	}
+	
+	function drawAllLasers(){
+		for( index = 0; index < laserArray.length ; index++ ){
+			if( laserArray[index].alive == false )
+				laserArray.splice( index, 1 );
+			else
+				laserArray[index].render( context );
+		}
+	}
+	
+	function moveLasers(){
+		for( index = 0; index < laserArray.length ; index++ ){
+			if( laserArray[index].y > -11 )
+				laserArray[index].y -= 10;
+			else if( laserArray[index].y < -10 )
+				laserArray.splice( index, 1 );
+		}
+	}
+	
+	function collisionDetection(){
+		//laser vs enemy
+		for( i = 0; i < laserArray.length; i++){
+			for( j = 0; j < enemyArray.length; j++){
+				if( laserArray[i].touch( enemyArray[j] ) ){
+					enemyArray[j].alive = false;
+					laserArray[i].alive = false;
+					score += 10;
+					if( enemyArray.length < MAX_ENEMIES_NUM) {
+						var newenemy = Object.create( enemy );
+						newenemy.alive = true;
+						newenemy.x = (Math.random() * ( canvas.width - newenemy.width ) ) ;
+						newenemy.y = -45;
+						newenemy.speed = GLOBAL_SPEED;
+						newenemy.image = imgSrcArray[ ~~( Math.random() * imgSrcArray.length ) ];
+						enemyArray.push( newenemy );
+					}
+				}	
+			}
+		}
+		//ship vs enemy
+		for( j = 0; j < enemyArray.length; j++){
+			if( player.touch( enemyArray[j] ) ){
+				//lose instantly
+				end();
+			}	
+		}		
+	}
+	
+	function drawScore( ctx ){
+		context.textAlign = "center";
+		context.fillStyle = "aqua";
+		context.font = "30px Arial";
+		context.fillText(score, 40, 35);
+	}
+	
+	function drawTime( ctx ){
+		ctx.font = 'bold 18px Arial';
+		ctx.fillStyle = '#fff';
+		var text = 'Time: ' + timer.timeRemain;
+		// ctx.fillText(text, canvas.width - ctx.measureText(text).width * 1.2, 30);
+		ctx.fillText(text, 115, 30);
+	}
+	
+	
+	var player = Object.create( ship );
+	var enemyArray = new Array();
+	var laserArray = new Array();
+	var score = 0;
+	
+	//init
+	globalInit();
+	
+	//register key listeners
+	//document.addEventListener("keydown", keyHandler, false);
+    //document.addEventListener("keyup", keyHandler, false);
+	//register mouse listener
+	canvas.addEventListener("mousemove", mouseMoveHandler, false);
+	canvas.addEventListener("mousedown", mouseDownHandler, false);
+	//register touch listeners
+	canvas.addEventListener("touchstart", touchEventHandler, false);
+	canvas.addEventListener("touchend", touchEventHandler, false);
+	canvas.addEventListener("touchcancel", touchEventHandler, false);
+	canvas.addEventListener("touchmove", touchEventHandler, false);
+	
+	//listener functions
+	// function keyHandler(e) {
+	// 	//console.log("use key now");
+	// 	if( e.keyCode == 39 )
+	// 		player.move( "right" );
+ //        else if( e.keyCode == 37 )
+	// 		player.move( "left" );
+	// 	else if( e.keyCode == 38 )
+	// 		player.move( "up" );
+	// 	else if( e.keyCode == 40 )
+	// 		player.move( "down" );
+	// 	else if( e.keyCode == 32 )
+	// 		//space bar
+	// 		player.shoot();
+ //    }
+	
+	function mouseMoveHandler(e) {
+		//console.log("using mouse");
+		var relativeX = e.clientX - canvas.offsetLeft;
+		var relativeY = e.clientY - canvas.offsetTop;
+		if( !SUSPENDED ){
+			if( relativeX > 0 && relativeX < canvas.width && relativeY > 0 && relativeY < canvas.height ) {
+				player.updatePos( (relativeX - ship.width / 2) , ( relativeY - ship.height / 2 ) );
+			}
+		}
+	}
+	
+	function mouseDownHandler(e){
+		if( SUSPENDED ){
+			endScrnClick( e.offsetX, e.offsetY );
+		}
+	}
+	
+	function touchEventHandler(e) {
+		if (e.touches.length === 0 ) return;
+		e.preventDefault();
+		e.stopPropagation();
+		var touch = e.touches[0];
+		
+		var relativeX = touch.clientX - canvas.offsetLeft;
+		var relativeY = touch.clientY - canvas.offsetTop;
+
+		if( !SUSPENDED ){
+			if( relativeX > 0 && relativeX < canvas.width && relativeY > 0 && relativeY < canvas.height ) {
+				player.updatePos( (relativeX - ship.width / 2) , ( relativeY - ship.height / 2 ) );
+			}
+		} else {
+			endScrnClick( touch.clientX, touch.clientY );
+		}
+		
+	}
+	
+	//Global Init
+	function globalInit(){
+		enemyArray = [];
+		laserArray = [];
+		createEnemies();
+		score = 0;
+		timer.setTimer( 60 );
+		GLOBAL_SPEED = 1;
+		player.init();
+	}
+	
+	setInterval(updateCanvas, 25);
+	//var game = setTimeout(updateCanvas, 1000 / 30);
+
+	function submitResults( data )
+	{
+	    // $('.response .data').text('');
+	    // $('.status .data').text('Loading...');
+
+	    //var data = $('.results textarea.data').val();
+	    var dataobj = null;
+	    try
+	    {
+	        dataobj = JSON.parse( data );
+	        //console.log( dataobj );
+	    }
+	    catch(e)
+	    {
+	        //$('.status .data').text('Invalid JSON');
+	        // alert(" Invalid JSON");
+	        return;
+	    }
+	    
+	    window.eitWebapp.submitResult(data, function(success, response) {
+	        if(success){
+	            //$('.status .data').text('Succeeded.');
+	            //alert("Succeeded.");
+
+	            //console.log(response);
+	            //$('.response .data').text(JSON.stringify(response, null, 4));
+	            // alert("JSON.stringify(response, null, 4)");
+	        }
+	        else {
+	            //$('.status .data').text('Failed.');
+	            // alert("Failed");
+	        }
+	    });
+	}
+
+	var t = 0;
+
+	function updateCanvas(){
+		if( !SUSPENDED ){
+			t = ( t + 25 ) % 500;
+			if( t == 0 ) player.shoot();
+			timer.tick();
+			if(timer.timeRemain == 0){
+				//alert( "Game Over! Your Score is " + score + "." );
+				end();
+			}
+			//init canvas
+			clearCanvas();
+			//collision Detection
+			collisionDetection();
+			//move enemies
+			moveEnemies();
+			//move lasers
+			moveLasers();
+			//draw enemies
+			drawAllEnemies();		
+			//draw plane
+			player.render( context );
+			//draw Lasers
+			drawAllLasers();
+			//draw score
+			drawScore( context );
+			//draw time
+			drawTime( context );
+
+			incrementSpeed();
+		}
+
+		
+	}
+
+	function incrementSpeed(){
+		GLOBAL_SPEED += 0.002;
+		for (var i = 0; i < enemyArray.length; i++) {
+			enemyArray[i].speed = GLOBAL_SPEED;
+		};
+	}
+
+	function end(){
+		SUSPENDED = true;
+		submitResults( JSON.stringify( [ { "stage_num" : 1, "question_num" : 1, "score" : score, "correctness" : true, "student_answer" : score } ] ) );
+		drawEndScrn();
+	}
+
+	function clearCanvas(){
+		context.clearRect( 0, 0, canvas.width, canvas.height );
+	}
+
+
+</script>
+
+</body>
+</html>

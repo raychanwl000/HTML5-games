@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<!--
+	REFERENCE:
+		http://rhuno.com/flashblog/2012/08/01/tutorial-puzzle-game-basics-with-html5-and-javascript/
+-->
+<html>
+	<head>
+		<title>swapping</title>
+		<style type="text/css">
+			* { padding: 0; margin: 0; }
+			canvas{
+				background: #eee;
+			}
+		</style>
+	</head>
+	<body>
+		<canvas id = "gameFrame" width = "1024" height = "680"></canvas>
+
+		<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+		<script type="text/javascript" src="ebook_api.js"></script>
+
+		<script type="text/javascript">
+			var canvas = document.getElementById("gameFrame");
+			var context = canvas.getContext("2d");
+
+			var SUSPENDED = false;
+
+			var endImg = new Image();
+			endImg.src = "endScrn.png";
+
+			function drawEndScrn(){
+				var x = (canvas.width - endImg.width) / 2;
+				var y = (canvas.height - endImg.height) / 2;
+
+				setTimeout( function(){ 
+					clearCanvas(); 
+					context.drawImage( endImg, x, y, endImg.width, endImg.height );
+
+					//draw Score
+					var fontSize = 30;
+					context.textAlign = "center";
+					context.fillStyle = "white";
+					context.font = fontSize + "px Arial";
+					context.fillText( score, canvas.width / 2 , y + endImg.height * 0.25);
+				}, 10 );
+			}
+
+			function replay(){
+				location.reload();
+			}
+
+			function home(){
+				history.back();
+			}
+
+			function endScrnClick( clickX, clickY ){
+				var startX = ( canvas.width - endImg.width ) / 2;
+				var startY = ( canvas.height - endImg.height ) / 2;
+
+				if( startY + endImg.height * 0.45 < clickY && clickY < startY + endImg.height * 0.8 ){
+					if( startX + endImg.width * 0.6 < clickX && clickX < startX + endImg.width * 0.8 ){
+						replay();
+					} else if( startX + endImg.width * 0.15 < clickX && clickX < startX + endImg.width * 0.35 ){
+						home();
+					}
+				}
+			}
+
+			canvas.width = 1024;
+			canvas.height = 680;
+
+			var canvasRatio = canvas.width / canvas.height;
+			var screenRatio = window.innerWidth / window.innerHeight;
+
+			if( screenRatio > canvasRatio ){
+				// canvas.width = canvas.width * window.innerHeight / canvas.height;
+				canvas.width = Math.min( 1024, canvas.width * window.innerHeight / canvas.height );
+				canvas.height = canvas.width / canvasRatio;
+			} else {
+				// canvas.width = window.innerWidth;
+				canvas.width = Math.min( 1024, window.innerWidth );
+				canvas.height = canvas.width / canvasRatio;
+			}
+
+
+			var score = 0;
+
+			// var imgSrcArray = ["money_1024x768.png", "sunset_1024x768.png", "pebbles_1024x768.png", "wall_1024x768.png", "poolBalls_1024x768.png", "lego_1024x768.png", "mandelbrot_1024x768.png", "julia_1024x768.png"];
+
+			var imgSrcArray = [ "p01.png", "p02.png" ];
+
+			var img = null;
+
+			var ROW = 4;
+			var COL = 4;
+
+			var CELL_WIDTH = canvas.width / COL;
+			var CELL_HEIGHT = canvas.height / ROW;
+
+			var tile = {
+				left : null,
+				top : null,
+				right : null,
+				bottom : null,
+
+				width : null,
+				height : null,
+
+				init : function( left, top, right, bottom ){
+					this.left = left;
+					this.top = top;
+					this.right = right;
+					this.bottom = bottom;
+
+					this.width = Math.abs( this.right - this.left );
+					this.height = Math.abs( this.top - this.bottom );
+				},
+			}
+
+			var tileArray = [];
+			var sortedArray = [];
+
+			loadRandImage();
+			setTimeout( function(){
+				globalInit();
+				canvas.addEventListener( "mousedown", mouseHandler, false );
+				canvas.addEventListener( "touchstart", touchHandler, false );
+			}, 5000);
+
+			function loadRandImage(){
+				var imgSrcString = imgSrcArray[ ~~( Math.random() *  imgSrcArray.length ) ];
+				// canvas.style.background = "url('./" + imgSrcString + "')";
+				// var dummyCanvas = document.create( "canvas" );
+				// dummyCanvas.width = canvas.width;
+				// dummyCanvas.height = canvas.height;
+
+				img = new Image();
+				// img = document.createElement('img');
+				img.src = imgSrcString;
+				// img.clientWidth = canvas.width;
+				// img.clientHeight = canvas.height;
+				// img.width = canvas.width;
+				// img.height = canvas.height;
+				// dummyCanvas.getContext("2d").drawImage( img, 0, 0, dummyCanvas.width, dummyCanvas.height );
+				// img.setAttribute( "src", dummyCanvas.toDataURL("image/png") );
+				// canvas.width = img.width;
+				// canvas.height = img.height;
+			}
+
+			var flag = false;
+
+			//to ensure image finish loading
+			img.addEventListener( "load", function(){
+				if( !flag ){
+					context.drawImage(img, 0, 0, canvas.width, canvas.height);
+					img.src = canvas.toDataURL();
+					flag = true;
+				}
+				
+			}, false );
+
+			function globalInit(){
+				SUSPENDED = false;
+				score = 0;
+				tileArray = [];
+				sortedArray = [];
+				for( i = 0; i < ROW; i++ ){
+					for( j = 0; j < COL; j++ ){
+						var newTile = Object.create( tile );
+						newTile.init( i * CELL_WIDTH, j * CELL_HEIGHT, ( i+1 ) * CELL_WIDTH, ( j+1 ) * CELL_HEIGHT );
+						tileArray.push( newTile );
+						sortedArray.push( newTile );
+					}
+				}
+				shuffleTiles();
+				updateScore();
+				drawAllTiles();
+			}
+
+			function shuffleTiles(){
+				var shuffleTime = ~~( ROW * COL * 1.5 );
+				for (var i = 0; i < shuffleTime; i++) {
+					var index1 = ~~( Math.random() * tileArray.length );
+					var index2 = ~~( Math.random() * tileArray.length );
+
+					var temp = tileArray[index1];
+					tileArray[index1] = tileArray[index2];
+					tileArray[index2] = temp;
+				};
+			}
+
+			function drawAllTiles(){
+				clearCanvas();
+				for (var i = 0; i < ROW; i++) {
+					for( j = 0; j < COL; j++ ){
+						var tile = tileArray[i * ROW + j];
+					
+						context.drawImage( img,
+											tile.left, tile.top,
+											tile.width, tile.height,
+											i * CELL_WIDTH, j * CELL_HEIGHT,
+											CELL_WIDTH, CELL_HEIGHT);
+					}
+				};
+			}
+
+			function clearCanvas(){
+				//canvas.style.background = "transparent";
+				context.clearRect( 0, 0, canvas.width, canvas.height );
+			}
+
+			function highlight( x, y ){
+			    context.lineWidth = 2;  
+				context.beginPath();  
+			    context.moveTo(x, y);  
+			    context.lineTo(x + CELL_WIDTH, y);  
+			    context.lineTo(x + CELL_WIDTH, y + CELL_HEIGHT);  
+			    context.lineTo(x, y + CELL_HEIGHT);  
+			    context.lineTo(x, y);  
+			  
+			    // set line color  
+			    context.strokeStyle = "red";  
+			    context.stroke();
+			    context.closePath();
+			}
+
+			function swapTiles( index1, index2 ){
+				var temp = tileArray[index1];
+				tileArray[index1] = tileArray[index2];
+				tileArray[index2] = temp;
+			}
+
+			var selected1, selected2;
+
+			function mouseHandler( e ){
+				if( !SUSPENDED ){
+					var clickX = e.offsetX;
+					var clickY = e.offsetY;
+
+					var x = ~~( clickX / CELL_WIDTH );
+					var y = ~~( clickY / CELL_HEIGHT );
+					var index = x * ROW + y;
+					var target = tileArray[index];
+					var drawHighlight = true;
+
+					clearCanvas();
+
+					//clear if matched
+					if( selected1 != undefined && selected2 != undefined ){
+						selected1 = selected2 = undefined;
+					}
+
+					if( selected1 == undefined )
+						selected1 = index;
+					else{
+						selected2 = index;
+						swapTiles( selected1, selected2 );
+						if( isWin() ) end();
+						drawHighlight = false;
+					}
+
+					drawAllTiles();
+					if (drawHighlight) highlight( x * CELL_WIDTH , y * CELL_HEIGHT );
+				} else{
+					endScrnClick( e.clientX, e.clientY );
+				}
+				
+			}
+
+			function touchHandler( e ){
+				if( !SUSPENDED ){
+					e.stopPropagation();
+					e.preventDefault();
+
+					var clickX = e.touches[0].pageX ;
+					var clickY = e.touches[0].pageY ;
+
+					var x = ~~( clickX / CELL_WIDTH );
+					var y = ~~( clickY / CELL_HEIGHT );
+					
+					var index = x * ROW + y;
+					var target = tileArray[index];
+					var drawHighlight = true;
+
+					clearCanvas();
+
+					//clear if matched
+					if( selected1 != undefined && selected2 != undefined ){
+						selected1 = selected2 = undefined;
+					}
+
+					if( selected1 == undefined )
+						selected1 = index;
+					else{
+						selected2 = index;
+						swapTiles( selected1, selected2 );
+						if( isWin() ) end();
+						drawHighlight = false;
+					}
+					drawAllTiles();
+
+					if (drawHighlight) highlight( x * CELL_WIDTH , y * CELL_HEIGHT );
+				} else{
+					endScrnClick( e.touches[0].clientX, e.touches[0].clientY );
+				}
+				
+
+			}
+
+			function isWin(){
+				var win = true;
+				for (var i = 0; i < tileArray.length; i++) {
+					if( tileArray[i] != sortedArray[i] )
+						win = false;
+				};
+				return win;
+			}
+
+			function end(){
+				updateScore();
+				SUSPENDED = true;
+				submitResults( JSON.stringify( [ { "stage_num" : 1, "question_num" : 1, "score" : score, "correctness" : true, "student_answer" : score } ] ) );
+
+				setTimeout( function(){
+					drawEndScrn();
+					//location.reload();
+				}, 5000 );
+			}
+
+			function submitResults( data )
+			{
+				// console.log("su")
+			    // $('.response .data').text('');
+			    // $('.status .data').text('Loading...');
+
+			    //var data = $('.results textarea.data').val();
+			    var dataobj = null;
+			    try
+			    {
+			        dataobj = JSON.parse( data );
+			        //console.log( dataobj );
+			    }
+			    catch(e)
+			    {
+			        //$('.status .data').text('Invalid JSON');
+			        //alert(" Invalid JSON");
+			        return;
+			    }
+			    window.eitWebapp.submitResult(data, function(success, response) {
+			        if(success){
+			            //$('.status .data').text('Succeeded.');
+			            //alert("Succeeded.");
+
+			            //console.log(response);
+			            //$('.response .data').text(JSON.stringify(response, null, 4));
+			            //alert("JSON.stringify(response, null, 4)");
+			        }
+			        else {
+			            //$('.status .data').text('Failed.');
+			            //alert("Failed");
+			        }
+			    });
+			}
+
+			// function decScore(){
+			// 	if( score > 200 ) score -= 100;
+			// }
+
+			function updateScore(){
+				score = 0;
+				for (var i = 0; i < tileArray.length; i++) {
+					if( tileArray[i] == sortedArray[i] )
+						score += 100;
+				};
+			}
+
+			window.onbeforeunload = function(e) {
+				if( !SUSPENDED ){
+					submitResults( JSON.stringify( [ { "stage_num" : 1, "question_num" : 1, "score" : score, "correctness" : true, "student_answer" : score } ] ) );
+					return "You haven't finished the game!";
+				}
+		    };
+
+			// setInterval( decScore, 5000 );
+		</script>
+	</body>
+</html>

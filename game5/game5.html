@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<!--references:
+	http://snake-tutorial.zeespencer.com/
+	http://thecodeplayer.com/walkthrough/html5-game-tutorial-make-a-snake-game-using-html5-canvas-jquery
+	https://www.youtube.com/watch?v=uU5YPIvJ24Y
+	http://www.w3schools.com/jquerymobile/event_swipe.asp
+-->
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>snake</title>
+    <style>
+    	* { padding: 0; margin: 0; }
+    	canvas {
+			background: url('./grass.jpg') no-repeat center center fixed; 
+    		-webkit-background-size: cover;
+	        -moz-background-size: cover;
+	        -o-background-size: cover;
+	        background-size: cover;
+
+			/*display: block; 
+			margin: 0 auto;*/
+			border: 1px solid #000;
+		}
+    </style>
+</head>
+<body>
+
+<div style="position: relative;">
+	<canvas id="gameFrame" width="768" height="768" style="position: absolute; left: 0; top: 0;"></canvas>
+</div>
+<div style="position: relative;">
+	<h1 id="debug"></h1>
+	<h2 id="debug2"></h2>
+</div>
+
+<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+<script type="text/javascript" src="ebook_api.js"></script>
+
+<script type="text/javascript">
+	var canvas = document.getElementById( "gameFrame" );
+	var context = canvas.getContext( "2d" );
+
+	var currentMap = null;
+	//canvas.height = canvas.width = Math.min( window.innerWidth, window.innerHeight ) - 2;
+	var SUSPENDED = false;
+
+	var endImg = new Image();
+	endImg.src = "endScrn.png";
+
+	function drawEndScrn(){
+		var x = (canvas.width - endImg.width) / 2;
+		var y = (canvas.height - endImg.height) / 2;
+
+		setTimeout( function(){ 
+			clearCanvas(); 
+			context.drawImage( endImg, x, y, endImg.width, endImg.height );
+
+			//draw Score
+			var fontSize = 30;
+			context.textAlign = "center";
+			context.fillStyle = "white";
+			context.font = fontSize + "px Arial";
+			context.fillText( score, canvas.width / 2 , y + endImg.height * 0.25);
+		}, 200 );
+	}
+
+	function replay(){
+		// console.log("replay")
+		SUSPENDED = false;
+		location.reload();
+	}
+
+	function home(){
+		// console.log("ho")
+		history.back();
+	}
+
+
+	function endScrnClick( clickX, clickY ){
+		var startX = ( canvas.width - endImg.width ) / 2;
+		var startY = ( canvas.height - endImg.height ) / 2;
+
+		if( startY + endImg.height * 0.45 < clickY && clickY < startY + endImg.height * 0.8 ){
+			if( startX + endImg.width * 0.6 < clickX && clickX < startX + endImg.width * 0.8 ){
+				replay();
+			} else if( startX + endImg.width * 0.15 < clickX && clickX < startX + endImg.width * 0.35 ){
+				home();
+			}
+		}
+	}
+
+
+	// canvas.width = 768;
+	// canvas.height = 768;
+
+	// var canvasRatio = canvas.width / canvas.height;
+	// var screenRatio = window.innerWidth / window.innerHeight;
+
+	// if( screenRatio > canvasRatio ){
+	// 	canvas.width = canvas.width * window.innerHeight / canvas.height;
+	// 	canvas.height = window.innerHeight;
+	// } else {
+	// 	canvas.width = window.innerWidth;
+	// 	canvas.height = canvas.height * window.innerWidth / canvas.width;
+	// }
+	canvas.width = canvas.height = Math.min( canvas.height, canvas.width, window.innerWidth, window.innerHeight, 768 );
+
+
+	var ROW = 20;
+	var	COL = 20;
+	var	CELL_WIDTH = ~~( canvas.width / ROW );
+
+	var mapArray = ["map_random", "map_cross", "map_stripe", "map_plus"];
+
+	var score = 0;
+		
+	var NUM_OF_OBSTACLES = ~~( ROW * COL / 20 );
+	var obstacleArray = [];
+
+	var grid = {
+		width : null,
+		height : null,
+		content : null,
+		init : function( row, col, val ){
+			this.width = col;
+			this.height = row;
+			
+			this.content = [];
+			
+			for( i = 0; i < col; i++ ){
+				this.content.push([]);
+				for( j = 0; j < row ; j++ ){
+					this.content[i].push( val );
+				}
+			}
+		},
+		setCell : function( x, y, val ){
+			this.content[x][y] = val;
+		},
+		getCell : function( x, y ){
+			return this.content[x][y];
+		},
+	}
+	
+	var snake = {
+		dir : null,
+		body : null,
+		last : null,
+		color : "yellow",
+		outsideColor : "blue",
+		init : function( x, y, dir ){
+			this.dir = dir;
+			this.body = [];
+			
+			this.insert( x,y );
+		},
+		insert : function( i, j ){
+			this.body.unshift( { x:i, y:j } );
+			this.last = this.body[0];
+		},
+		remove : function(){
+			return this.body.pop();
+		},
+		render : function(){
+			for( index = 0; index < this.body.length; index++ ){
+				if( index == 0 ){
+					context.fillStyle = "orange";
+					context.fillRect( this.body[index].x * CELL_WIDTH, this.body[index].y * CELL_WIDTH, CELL_WIDTH, CELL_WIDTH );
+					context.strokeStyle = "green";
+					context.lineWidth = CELL_WIDTH / 5;
+					context.strokeRect( this.body[index].x * CELL_WIDTH, this.body[index].y * CELL_WIDTH, CELL_WIDTH, CELL_WIDTH  );
+				} else {
+					context.fillStyle = this.color;
+					context.fillRect( this.body[index].x * CELL_WIDTH, this.body[index].y * CELL_WIDTH, CELL_WIDTH, CELL_WIDTH );
+					context.strokeStyle = this.outsideColor;
+					context.lineWidth = CELL_WIDTH / 5;
+					context.strokeRect( this.body[index].x * CELL_WIDTH, this.body[index].y * CELL_WIDTH, CELL_WIDTH, CELL_WIDTH  );
+				}
+			}
+		},
+	}
+
+	var food = {
+		x: null,
+		y: null,
+		color : "red",
+		outsideColor : "black",
+		init : function( i, j ){
+			this.x = i;
+			this.y = j;
+		},
+		render : function(){
+			context.fillStyle = this.color;
+			context.fillRect( this.x * CELL_WIDTH, this.y * CELL_WIDTH, CELL_WIDTH, CELL_WIDTH );
+			context.strokeStyle = this.outsideColor;
+			context.lineWidth = CELL_WIDTH / 5;
+			context.strokeRect( this.x * CELL_WIDTH, this.y * CELL_WIDTH, CELL_WIDTH, CELL_WIDTH );
+		},
+	}
+	
+	function spawnFood(){
+		var emptyCells = [];
+		for( i = 0 ; i < grid.width ; i++ )
+			for( j = 0; j < grid.height ; j++ )
+				if( grid.content[i][j] == "EMPTY" )
+					emptyCells.push( { x:i, y:j } );
+		
+		var randPos = emptyCells[ ~~( Math.random() * emptyCells.length ) ];
+		grid.setCell( randPos.x, randPos.y, "FOOD" );
+		food.init( randPos.x, randPos.y );
+	
+	}
+	
+	function moveSnake(){
+		var nextx = snake.last.x;
+		var nexty = snake.last.y;
+
+		switch( snake.dir ){
+			case "left":
+				nextx--;
+				break;
+			case "up" :
+				nexty--;
+				break;
+			case "right" :
+				nextx++;
+				break;
+			case "down" :
+				nexty++;
+				break;
+		}
+
+		//die
+		if( nextx < 0 || nextx > grid.width - 1 || nexty < 0 || nexty > grid.height - 1 || grid.getCell( nextx, nexty ) == "SNAKE" || grid.getCell( nextx, nexty ) == "OBSTACLE" ){
+			// submitResults( JSON.stringify( [ { "stage_num" : 1, "question_num" : 1, "score" : score, "correctness" : true, "student_answer" : score } ] ) );
+			//console.log( snake.dir );
+			end();
+
+		}
+		
+		//eat food
+		if( grid.getCell( nextx, nexty ) == "FOOD" ){
+			score += 10 * snake.body.length ;
+			grid.setCell( nextx, nexty, "SNAKE" );
+			var tail = { x: nextx, y: nexty };
+			spawnFood();
+		} else {
+			//nothing
+			var tail = snake.body.pop();
+			grid.setCell( tail.x, tail.y, "EMPTY" );
+			tail.x = nextx;
+			tail.y = nexty;
+			grid.setCell( tail.x, tail.y, "SNAKE" );
+		}
+		snake.insert( tail.x, tail.y );
+		//console.log( tail.x, tail.y );
+	}
+	
+	function globalInit(){
+		obstacleArray = [];
+		score = 0;
+		grid.init( ROW, COL, "EMPTY" );
+		var startingPt = { x: ~~( COL / 2 ) , y: ( ROW - 1 )};
+		//snake.init( startingPt.x, startingPt.y, "up" );
+		snake.init( ~~( COL / 2 ), ( ROW - 1 ), "up" );
+		grid.setCell( startingPt.x, startingPt.y, "SNAKE" );
+		loadMap( mapArray[ ~~( Math.random() * mapArray.length ) ] );
+		// loadMap("map_plus");
+		spawnFood();
+	}
+
+
+	function drawScore(){
+		context.fillStyle = "white";
+		context.font = "30px Arial";
+		context.fillText(score, 40, 35);
+	}
+	
+	function updateCanvas(){
+		if( !SUSPENDED ){
+			clearCanvas();
+			food.render();
+			drawObstacles();
+			moveSnake();
+			snake.render();
+			drawScore();
+		}
+	}
+	
+	setInterval( updateCanvas, 200 );
+
+	document.addEventListener("keydown", keyDownHandler, false );
+	document.addEventListener("keyup", keyUpHandler, false );
+
+	var keystate = {};
+
+	function keyDownHandler( e ){
+		if( !SUSPENDED ){
+			keystate[ e.keyCode ] = true;
+			switch( e.keyCode ){
+				case 37 :
+					if( snake.dir != "right" && keystate[37] ) snake.dir = "left" ;
+					break;
+				case 38 :
+					if( snake.dir != "down" && keystate[38] ) snake.dir = "up" ;
+					break;
+				case 39 :
+					if( snake.dir != "left" && keystate[39] ) snake.dir = "right" ;
+					break;
+				case 40 :
+					if( snake.dir != "up" && keystate[40] ) snake.dir = "down" ;
+					break;
+			}
+		}
+			
+	}
+
+	function keyUpHandler( e ){
+		if( !SUSPENDED )
+			delete keystate[ e.keyCode ];
+	}
+
+	canvas.addEventListener( "touchstart", touchStartHandler, false );
+	canvas.addEventListener( "touchend", touchEndHandler, false );
+
+	canvas.addEventListener( "mousedown",mouseDownHandler, false );
+
+	function mouseDownHandler( e ){
+		if( SUSPENDED ){
+			endScrnClick( e.clientX, e.clientY );
+		}
+	}
+
+	var touchStartPtX = -1, touchEndPtX = -1 , touchStartPtY = -1, touchEndPtY = -1;
+
+	function touchStartHandler( e ){
+		e.stopPropagation();
+		e.preventDefault();
+		if( !SUSPENDED ){
+			touchStartPtX = e.touches[0].clientX;
+			touchStartPtY = e.touches[0].clientY;
+		}
+		else{
+			endScrnClick( e.touches[0].clientX, e.touches[0].clientY );
+		}
+		// document.getElementById("debug").innerHTML = ( ~~(touchStartPt.clientX) + "," + ~~(touchStartPt.clientY) );
+
+	}
+
+	function touchEndHandler( e ){
+		// e.preventDefault();
+		if( !SUSPENDED ){
+			// if( e.changedTouches[0].identifier == touchStartPt.identifier ){
+				// var start = touchStartPt;
+				// var end = e.changedTouches[0];
+				touchEndPtX = e.changedTouches[0].clientX;
+				touchEndPtY = e.changedTouches[0].clientY;
+				// document.getElementById("debug2").innerHTML = ( ~~(end.clientX) + "," + ~~(end.clientY));
+				
+				// var dx = end.clientX - start.clientX;
+				var dx = touchEndPtX - touchStartPtX;
+				// var dy = end.clientY - start.clientY;
+				var dy = touchEndPtY - touchStartPtY;
+
+				//follow the definition of swipe event in jQuery
+				if( Math.abs( dx ) > 30 || Math.abs( dy ) > 75 ){
+					if( ( Math.abs( dx ) / 30 ) > ( Math.abs( dy ) / 75 ) ){
+						//horizontal dominate
+						if( dx > 0 ){
+							//right
+							if( snake.dir != "left" ) snake.dir = "right" ;
+						}else{
+							//left
+							if( snake.dir != "right" ) snake.dir = "left" ;
+						}
+					}else{
+						//vertical dominate
+						// PS inverted coordinate
+						if( dy < 0 ){
+							//up
+							if( snake.dir != "down" ) snake.dir = "up" ;
+						}else{
+							//down
+							if( snake.dir != "up" ) snake.dir = "down" ;
+						}
+					}
+				}
+			// }
+		}
+		touchStartPt = -1;		
+	}
+
+	function submitResults( data )
+	{
+	    // $('.response .data').text('');
+	    // $('.status .data').text('Loading...');
+
+	    //var data = $('.results textarea.data').val();
+	    var dataobj = null;
+	    try
+	    {
+	        dataobj = JSON.parse( data );
+	        // console.log( dataobj );
+	    }
+	    catch(e)
+	    {
+	        //$('.status .data').text('Invalid JSON');
+	        //alert(" Invalid JSON");
+	        return;
+	    }
+	    
+	    window.eitWebapp.submitResult(data, function(success, response) {
+	        if(success){
+	            //$('.status .data').text('Succeeded.');
+	            //alert("Succeeded.");
+
+	            // console.log(response);
+	            //$('.response .data').text(JSON.stringify(response, null, 4));
+	            //alert("JSON.stringify(response, null, 4)");
+	        }
+	        else {
+	            //$('.status .data').text('Failed.');
+	            //alert("Failed");
+	        }
+	    });
+	}
+
+
+	function drawObstacles(){
+		// console.log( currentMap )
+		if( currentMap == "map_plus" ){
+			context.fillStyle = "red";
+		} else {
+			context.fillStyle = "black";
+		}
+		for (var i = 0; i < obstacleArray.length; i++) {
+			context.fillRect( obstacleArray[i].x * CELL_WIDTH, obstacleArray[i].y * CELL_WIDTH, CELL_WIDTH, CELL_WIDTH ); 
+		};
+	}
+
+	function end(){
+		SUSPENDED = true;
+		submitResults( JSON.stringify( [ { "stage_num" : 1, "question_num" : 1, "score" : score, "correctness" : true, "student_answer" : score } ] ) );
+		drawEndScrn();
+	}
+
+	globalInit();
+
+
+	function loadMap( mapName ){
+		switch( mapName ){
+			case "map_random":
+				currentMap = "map_random";
+				var emptyCells = [];
+				for( i = 1 ; i < grid.width - 2 ; i++ )
+					for( j = 1; j < grid.height - 2 ; j++ )
+						if( grid.content[i][j] == "EMPTY" && !( j == snake.y + 1 && i == snake.x) )
+							emptyCells.push( { x:i, y:j } );
+					
+				for (var i = 0; i < NUM_OF_OBSTACLES; i++) {
+					var randIndex = ~~( Math.random() * emptyCells.length );
+					var randPos = emptyCells[ randIndex ];
+					emptyCells.splice( randIndex, 1 );
+					grid.setCell( randPos.x, randPos.y, "OBSTACLE" );	
+					obstacleArray.push( randPos );
+				};
+				grid.setCell( ~~( COL / 2 ), ( ROW - 1 ), "EMPTY");
+				snake.init( grid.width - 1, grid.width - 1, "up" );
+				break;
+			case "map_cross" :
+				currentMap = "map_cross";
+				for (var i = 2; i < grid.width - 2; i++ ) {
+					if( i != ~~( (grid.width - 1) / 2) && i != Math.ceil( (grid.width - 1) / 2 ) ){
+						grid.setCell( i, i, "OBSTACLE" );
+						obstacleArray.push( { x:i, y:i } );
+						grid.setCell( i, grid.width - i - 1, "OBSTACLE" );
+						obstacleArray.push( { x:i, y: grid.width - i - 1 } );
+					}
+				};
+				break;
+			case "map_stripe":
+				currentMap = "map_stripe";
+				for (var i = 1; i < grid.width - 1; i++) {
+					for( var j = 1; j < grid.width - 1; j++){
+						if( j % 4 == 0 )	
+						{
+							grid.setCell( i, j, "OBSTACLE" );
+							obstacleArray.push( { x:i, y:j } );
+						}		
+					}
+				};
+				snake.dir = "right";
+				break;
+			case "map_plus":
+				currentMap = "map_plus";
+				var bound = Math.min(grid.width - 1, grid.height - 1) ;
+				grid.setCell( ~~( COL / 2 ), ( ROW - 1 ), "EMPTY");
+				for (var i = 2; i < bound - 1; i++) {
+					for( var j = 2; j < bound - 1; j++){
+
+						if( i == ~~( bound / 2 ) || i == Math.ceil( bound / 2 ) || j == ~~( bound / 2 ) || j == Math.ceil( bound / 2 ))	
+						{
+							grid.setCell( i, j, "OBSTACLE" );
+							obstacleArray.push( { x:i, y:j } );
+						}		
+					}
+				};
+
+				snake.init( bound, bound, "up");
+				//snake.dir = "right";
+				break;
+			default:
+				break;
+		}
+	}
+
+	function clearCanvas(){
+		context.clearRect( 0, 0, canvas.width, canvas.height );
+	}
+</script>
+
+</body>
+</html>

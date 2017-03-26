@@ -1,0 +1,385 @@
+<html>
+	<head>
+		<meta charset = "UTF-8">
+		<title>puzzle</title>
+		<style type="text/css">
+		canvas{
+			background: #eee;
+		}
+		</style>
+	</head>
+	<body>
+		<div style="position: relative;">
+			<canvas id="gameFrame" width="768" height="768" style="position: absolute; left: 0; top: 0;"></canvas>
+		</div>
+
+		<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+		<script type="text/javascript" src="ebook_api.js"></script>
+
+		<script type="text/javascript">
+			var canvas = document.getElementById( 'gameFrame' );
+			var context = canvas.getContext( '2d' );
+			
+			var SUSPENDED = false;
+
+			var endImg = new Image();
+			endImg.src = "endScrn.png";
+
+			function drawEndScrn(){
+				var x = (canvas.width - endImg.width) / 2;
+				var y = (canvas.height - endImg.height) / 2;
+
+				setTimeout( function(){ 
+					clearCanvas(); 
+					context.drawImage( endImg, x, y, endImg.width, endImg.height );
+
+					//draw Score
+					var fontSize = 30;
+					context.textAlign = "center";
+					context.fillStyle = "white";
+					context.font = fontSize + "px Arial";
+					context.fillText( score, canvas.width / 2 , y + endImg.height * 0.25);
+				}, 10 );
+			}
+
+			var timer = {
+				timeRemain : 0,
+				tickTemp : 0,
+				setTimer : function(x){
+					this.timeRemain = x;
+				},
+				tick : function(){
+					this.tickTemp += 25;
+					if(this.tickTemp == 1000){
+						this.tickTemp = 0;
+						this.timeRemain--;
+					}
+				},
+				drawTime : function(){
+					context.font = 'bold 18px Arial';
+					context.fillStyle = '#fff';
+					var text = 'Time: ' + this.timeRemain;
+					// ctx.fillText(text, canvas.width - ctx.measureText(text).width * 1.2, 30);
+					context.fillText(text, 30, 30);
+				}
+			}
+
+			function replay(){
+				//SUSPENDED = false;
+				location.reload();
+			}
+
+			function home(){
+				history.back();
+			}
+
+			function endScrnClick( clickX, clickY ){
+				var startX = ( canvas.width - endImg.width ) / 2;
+				var startY = ( canvas.height - endImg.height ) / 2;
+
+				if( startY + endImg.height * 0.45 < clickY && clickY < startY + endImg.height * 0.8 ){
+					if( startX + endImg.width * 0.6 < clickX && clickX < startX + endImg.width * 0.8 ){
+						replay();
+					} else if( startX + endImg.width * 0.15 < clickX && clickX < startX + endImg.width * 0.35 ){
+						home();
+					}
+				}
+			}
+
+			var SIDE = 4;
+
+			// canvas.width = 768;
+			// canvas.height = 768;
+
+			// var canvasRatio = canvas.width / canvas.height;
+			// var screenRatio = window.innerWidth / window.innerHeight;
+
+			// if( screenRatio > canvasRatio ){
+			// 	canvas.width = canvas.width * window.innerHeight / canvas.height;
+			// 	canvas.height = window.innerHeight;
+			// } else {
+			// 	canvas.width = window.innerWidth;
+			// 	canvas.height = canvas.height * window.innerWidth / canvas.width;
+			// }
+
+			canvas.width = canvas.height = Math.min( canvas.height, canvas.width, window.innerWidth, window.innerHeight, 768 );
+
+			//GAME_MODE can be EASY or ADVANCED
+			var GAME_MODE = "ADVANCED";
+
+			switch( GAME_MODE ){
+				case "EASY":
+					document.title = "puzzle(easy)"
+					break;
+				case "ADVANCED":
+					document.title = "puzzle(advanced)"
+					break;
+			}
+			
+			var CELL_WIDTH = ~~( canvas.width / SIDE );
+
+			var score = 0;
+			var tileArray = [];
+
+			var WRONG = 0;
+			var CORRECT = 1;
+
+			globalInit();
+
+			var TIMER = Object.create( timer );
+
+			var intervalID = setInterval( function(){
+				timer.tick();
+				if( timer.timeRemain == 0 ) end();
+				drawAllTiles();
+				timer.drawTime();
+			}, 25 );
+
+			// setInterval( function(){
+			// 	drawAllTiles();
+			// 	timer.drawTime();
+			// }, 25 );
+
+			function globalInit(){
+				SUSPENDED = false;
+				score = 0;
+				tileArray = [];
+				switch( GAME_MODE ){
+					case "EASY":
+						initTiles( "shuffle" );
+						timer.setTimer( 2 * 60 );
+						break;
+					case "ADVANCED":
+						initTiles( "normal" );
+						timer.setTimer( 5 * 60 );
+						break;
+				}
+				drawAllTiles();
+				updateScore();
+			}
+
+			function updateScore(){
+				score = 0;
+				for (var i = 0; i < SIDE; i++) {
+					for (var j = 0; j < SIDE; j++) {
+						if( tileArray[i][j] == CORRECT ){
+							score += 100;
+						}
+					};
+				};
+			}
+
+			function drawAllTiles(){
+				for (var i = 0; i < SIDE; i++) {
+					for (var j = 0; j < SIDE; j++) {
+						switch( tileArray[i][j] ){
+							case CORRECT:
+								//background
+								context.fillStyle = "aqua";
+								context.fillRect( i * CELL_WIDTH, j * CELL_WIDTH, CELL_WIDTH - 2, CELL_WIDTH - 2 );
+
+								//circle
+								context.strokeStyle = 'yellow';
+								var centerX = i * CELL_WIDTH + CELL_WIDTH / 2;
+								var centerY = j * CELL_WIDTH + CELL_WIDTH / 2;
+								var radius = CELL_WIDTH / 3;
+
+								context.beginPath();
+								context.lineWidth = 4;
+								context.arc( centerX, centerY, radius, 0, 2 * Math.PI );
+								context.stroke();
+								context.closePath();
+								break;
+
+							case WRONG:
+								//background
+								context.fillStyle = "Chartreuse";
+								context.fillRect( i * CELL_WIDTH, j * CELL_WIDTH, CELL_WIDTH - 2, CELL_WIDTH - 2 );
+								//cross
+								context.strokeStyle = 'red';
+								//upper-left of cross
+								var startX = i * CELL_WIDTH + CELL_WIDTH / 6;
+								var startY = j * CELL_WIDTH + CELL_WIDTH / 6;
+								//lower-right of cross
+								var endX = i * CELL_WIDTH + CELL_WIDTH * 5 / 6;
+								var endY = j * CELL_WIDTH + CELL_WIDTH * 5 / 6;
+
+								context.beginPath();
+								context.lineWidth = 4;
+								context.moveTo( startX, startY );
+								context.lineTo( endX, endY );
+								context.moveTo( startX, endY );
+								context.lineTo( endX, startY );
+								context.stroke();
+								context.closePath();
+								break;
+						}
+					};
+				};
+			}
+
+			function flipTile( x, y ){
+				tileArray[x][y] = 1 - tileArray[x][y];
+				for (var i = 0; i < SIDE; i++) {
+					for (var j = 0; j < SIDE; j++) {
+						switch( GAME_MODE ){
+							case "EASY":
+								if( distance( i, j, x, y ) == 1 && y == j ){
+									tileArray[i][j] = 1 - tileArray[i][j];
+								}
+								break;
+							case "ADVANCED":
+								if( distance( i, j, x, y ) == 1 ){
+									tileArray[i][j] = 1 - tileArray[i][j];
+								}
+								break;
+						}
+					};
+				};
+				updateScore();
+			}
+
+			function initTiles( state ){
+				switch( state ){
+					case "normal":
+						for (var i = 0; i < SIDE; i++) {
+							tileArray[i] = [];
+							for (var j = 0; j < SIDE; j++) {
+								tileArray[i][j] = WRONG;
+							};
+						};
+						break;
+					case "shuffle":
+						var reshuffle = true;
+						while( reshuffle ){
+							for (var i = 0; i < SIDE; i++) {
+								tileArray[i] = [];
+								for (var j = 0; j < SIDE; j++) {
+									tileArray[i][j] = ( Math.random() > 0.5 ? CORRECT : WRONG );
+									if ( tileArray[i][j] == WRONG ) { reshuffle = false };
+								};
+							};
+						}
+						break;
+				}
+			}
+
+			function clearCanvas(){
+				context.clearRect( 0, 0, canvas.width, canvas.height );
+			}
+
+			function end(){
+				//alert("Game Over! Your score is " + score + ".");
+				clearInterval( intervalID );
+				updateScore();
+				SUSPENDED = true;
+				submitResults( JSON.stringify( [ { "stage_num" : 1, "question_num" : 1, "score" : score, "correctness" : true, "student_answer" : score } ] ) );
+				drawEndScrn();
+				// return globalInit();
+			}
+
+			function submitResults( data )
+			{
+			    // $('.response .data').text('');
+			    // $('.status .data').text('Loading...');
+
+			    //var data = $('.results textarea.data').val();
+			    var dataobj = null;
+			    try
+			    {
+			        dataobj = JSON.parse( data );
+			        // console.log( dataobj );
+			    }
+			    catch(e)
+			    {
+			        //$('.status .data').text('Invalid JSON');
+			        //alert(" Invalid JSON");
+			        return;
+			    }
+			    window.eitWebapp.submitResult(data, function(success, response) {
+			        if(success){
+			            //$('.status .data').text('Succeeded.');
+			            //alert("Succeeded.");
+
+			            // console.log(response);
+			            //$('.response .data').text(JSON.stringify(response, null, 4));
+			            //alert("JSON.stringify(response, null, 4)");
+			        }
+			        else {
+			            //$('.status .data').text('Failed.');
+			            //alert("Failed");
+			        }
+			    });
+			}
+
+			canvas.addEventListener( 'mousedown', mouseHandler, false );
+			canvas.addEventListener( 'touchstart', touchHandler, false );
+
+			function mouseHandler( e ){
+				var clickX = e.pageX;
+				var clickY = e.pageY;
+
+				var x = ~~( clickX / CELL_WIDTH );
+				var y = ~~( clickY / CELL_WIDTH );
+
+				if( !SUSPENDED )
+					click( x, y );
+				else
+					endScrnClick( e.clientX, e.clientY );
+			}
+
+			function touchHandler( e ){
+				e.stopPropagation();
+				e.preventDefault();
+
+				var clickX = e.touches[0].pageX;
+				var clickY = e.touches[0].pageY;
+
+				var x = ~~( clickX / CELL_WIDTH );
+				var y = ~~( clickY / CELL_WIDTH );
+
+				if( !SUSPENDED )
+					click( x, y );
+				else
+					endScrnClick( e.touches[0].clientX, e.touches[0].clientY );
+			}
+
+			function distance( x1, y1, x2, y2 ){
+				return Math.abs(x1 - x2) + Math.abs( y1 - y2 );
+			}
+
+			function click( x, y ){
+				flipTile( x, y );
+				drawAllTiles();
+
+				if( checkWin() ){
+					end();
+				}
+			}
+
+			function checkWin(){
+				var win = true;
+				for (var i = 0; i < SIDE; i++) {
+					for (var j = 0; j < SIDE; j++) {
+						if( tileArray[i][j] != CORRECT )
+							win = false;
+					};
+				};
+				return win;
+			}
+
+			window.onbeforeunload = function(e) {
+				if( !SUSPENDED ){
+					submitResults( JSON.stringify( [ { "stage_num" : 1, "question_num" : 1, "score" : score, "correctness" : true, "student_answer" : score } ] ) );
+					return "You haven't finished the game!";
+				}
+		    };
+
+			// function decScore(){
+			// 	if( score > 100 ) score -= 100;
+			// }
+
+			//setInterval( decScore, 5000 );
+		</script>
+	</body>
+</html>

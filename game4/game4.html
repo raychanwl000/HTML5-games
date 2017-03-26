@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<!--references:
+	http://michalbe.blogspot.hk/2010/09/simple-game-with-html5-canvas-part-1.html
+
+-->
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>jump</title>
+    <style>
+    	* { padding: 0; margin: 0; }
+    	canvas { 
+    		display: block;
+    		margin: 0 auto;
+    	}
+    </style>
+</head>
+<body>
+
+<div style="position: relative;">
+	<canvas id="gameFrame" width="768" height="1024" style="position: absolute; left: 0; top: 0;"></canvas>
+</div>
+
+<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+<script type="text/javascript" src="ebook_api.js"></script>
+
+<script type="text/javascript">
+	var canvas = document.getElementById("gameFrame");
+	var context = canvas.getContext("2d");
+	var score = 0;
+
+	var SUSPENDED = false;
+
+	context.textAlign = "center";
+
+	var endImg = new Image();
+	endImg.src = "endScrn.png";
+
+	function drawEndScrn(){
+		var x = (canvas.width - endImg.width) / 2;
+		var y = (canvas.height - endImg.height) / 2;
+
+		setTimeout( function(){ 
+			clearCanvas(); 
+			context.drawImage( endImg, x, y, endImg.width, endImg.height );
+
+			//draw Score
+			var fontSize = 30;
+			context.textAlign = "center";
+			context.fillStyle = "white";
+			context.font = fontSize + "px Arial";
+			context.fillText( score, canvas.width / 2 , y + endImg.height * 0.25);
+		}, 10 );
+	}
+
+	function replay(){
+		// console.log("replay")
+		SUSPENDED = false;
+		location.reload();
+	}
+
+	function home(){
+		// console.log("home")
+		history.back();
+	}
+
+	function endScrnClick( clickX, clickY, type ){
+		// if( type == "mouse" ){
+		// 	var startX = ( canvas.width - endImg.width ) / 2;
+		// 	var startY = ( canvas.height - endImg.height ) / 2;
+
+		// 	if( startY + endImg.height * 0.45 < clickY && clickY < startY + endImg.height * 0.8 ){
+		// 		if( startX + endImg.width * 0.6 < clickX && clickX < startX + endImg.width * 0.8 ){
+		// 			replay();
+		// 		} else if( startX + endImg.width * 0.15 < clickX && clickX < startX + endImg.width * 0.35 ){
+		// 			home();
+		// 		}
+		// 	}
+		// } else if( type == "touch" ){
+		// 	var startX = ( canvas.width - endImg.width ) / 2;
+		// 	var startY = ( canvas.height - endImg.height ) / 2;
+		// 	// console.log( (clickX - startX) / endImg.width, (clickY - startY) / endImg.height );
+
+		// 	if( startY + endImg.height * 0.45 < clickY && clickY < startY + endImg.height * 0.8 ){
+		// 		if( startX + endImg.width * 0.8 < clickX && clickX < startX + endImg.width * 1.1 ){
+		// 			replay();
+		// 		} else if( startX + endImg.width * 0.35 < clickX && clickX < startX + endImg.width * 0.6 ){
+		// 			home();
+		// 		}
+		// 	}
+		// }
+		var startX = ( canvas.width - endImg.width ) / 2;
+		var startY = ( canvas.height - endImg.height ) / 2;
+
+		if( startY + endImg.height * 0.45 < clickY && clickY < startY + endImg.height * 0.8 ){
+			if( startX + endImg.width * 0.6 < clickX && clickX < startX + endImg.width * 0.8 ){
+				replay();
+			} else if( startX + endImg.width * 0.15 < clickX && clickX < startX + endImg.width * 0.35 ){
+				home();
+			}
+		}
+	}
+	
+	// canvas.width = 768;
+	// canvas.height = 1024;
+
+	// var canvasRatio = canvas.width / canvas.height;
+	// var screenRatio = window.innerWidth / window.innerHeight;
+
+	// if( screenRatio > canvasRatio ){
+	// 	// console.log( "1st")
+	// 	canvas.width = canvas.width * window.innerHeight / canvas.height;
+	// 	canvas.height = canvas.width / canvasRatio;
+	// } else {
+	// 	// console.log( "2nd")
+	// 	canvas.width = window.innerWidth;
+	// 	canvas.height = canvas.width / canvasRatio;
+	// }
+	canvas.width = 768;
+	canvas.height = 1024;
+
+	var canvasRatio = canvas.width / canvas.height;
+	var screenRatio = window.innerWidth / window.innerHeight;
+
+	if( screenRatio > canvasRatio ){
+		// canvas.width = canvas.width * window.innerHeight / canvas.height;
+		canvas.width = Math.min( 768, canvas.width * window.innerHeight / canvas.height );
+		canvas.height = canvas.width / canvasRatio;
+	} else {
+		// canvas.width = window.innerWidth;
+		canvas.width = Math.min( 768, window.innerWidth );
+		canvas.height = canvas.width / canvasRatio;
+	}
+
+
+	var DEBUG_MODE = false;
+
+	var MAX_PLATFORM_NUM = 7;
+	var MIN_PLATFORM_NUM = 3;
+	var currentPlatformNum = MAX_PLATFORM_NUM;
+	var platformArray = [];
+
+	var tempPlatformArray = [];
+	
+	var jumper = {
+		image : null,
+		width : canvas.width / 5,
+		height : canvas.height / 5,
+		x : 0,
+		y : 0,
+		color : "red",
+		updatePos : function( i, j ){
+			this.x = i;
+			this.y = j;
+		},
+		render : function( ctx ){
+			ctx.beginPath();
+			//ctx.rect(this.x, this.y, this.width, this.height);
+			//var imgElement = this.getImgElement();
+			ctx.drawImage( this.getImgElement(), this.x, this.y , this.width, this.height );
+
+			ctx.fillStyle = this.color;
+			ctx.fill();
+			ctx.closePath();
+
+			if( DEBUG_MODE ){
+				ctx.beginPath();
+				ctx.fillStyle = "red";
+				ctx.arc( this.x, this.y, 5, 0, Math.PI * 2 );
+				ctx.fill();
+				ctx.closePath();
+
+				ctx.beginPath();
+				ctx.fillStyle = "red";
+				ctx.arc( this.x, this.y + this.height, 5, 0, Math.PI * 2 );
+				ctx.fill();
+				ctx.closePath();
+			}
+		},
+		getImgElement : function(){
+			var img = document.createElement('img'); // use DOM HTMLImageElement
+			img.src = this.image;
+			img.alt = 'alt text';
+			return img;
+		},
+		isJumping : false,
+		isFalling : false,
+		jumpSpeed : 0,
+		fallSpeed : 0,
+		jump : function(){
+			//function for init jump;
+			//this function is used to trigger jumps
+			if( !this.isJumping && !this.isFalling ){
+				this.fallSpeed = 0;
+				this.isJumping = true;
+				this.jumpSpeed = ~~( 17 / 500 * canvas.height );
+			}
+		},
+		checkJump : function(){
+			//lower half of screen
+			if( player.y > canvas.height * 0.4 )
+				//really do the jump
+				this.updatePos( this.x, this.y - this.jumpSpeed );
+			else{
+				if ( this.jumpSpeed > 10 ) score++;
+				for( index = 0; index < platformArray.length ; index++ ){
+					//scoll down
+					platformArray[index].y += this.jumpSpeed;
+					if( platformArray[index].y >= canvas.height ){
+						//platform reach bottom
+						var initY = platformArray[index].y - canvas.height;
+
+						platformArray[index] = spawnPlatform( initY );
+						if (platformArray[index].type == "spike" ) {
+							do{
+								var newPlatform = spawnPlatform( initY );
+							} while ( newPlatform.type == "spike" );
+							newPlatform.x = ( platformArray[index].x > canvas.width / 2 ? 0 : canvas.wdith - newPlatform.width );
+							tempPlatformArray.push( newPlatform ); 
+						};
+					}
+				}
+				for (var i = 0; i < tempPlatformArray.length; i++) {
+					tempPlatformArray[i].y += this.jumpSpeed;
+					if( tempPlatformArray[i].y >= canvas.height ){
+						//platform reach bottom
+						tempPlatformArray.splice( i, 1 );
+						
+					}
+				};
+			}
+			
+			
+			this.jumpSpeed--;
+			//start to fall
+			if( this.jumpSpeed == 0 ){
+				this.isJumping = false;
+				this.isFalling = true;
+				this.fallSpeed = 1;
+			}
+		},
+		checkFall : function(){
+			if( this.y <= canvas.height - this.height - platformArray[0].height ){
+				this.updatePos( this.x, this.y + this.fallSpeed );
+				this.fallSpeed++;
+			}else{
+				//touch ground
+				if( score == 0 )
+					this.fallStop();
+				else{
+					end();
+				}
+			}
+		},
+		fallStop : function(){
+			this.isFalling = false;
+			this.fallSpeed = 0;
+			this.jump();
+		},
+		init : function(){
+			this.image = "octopus.png";
+			this.width = canvas.width / 5;
+			this.height = canvas.height / 5;
+			this.updatePos( (canvas.width - player.width ), ( canvas.height - player.height ) );
+			//trigger the first jump
+			this.jump();
+		},
+		//horizontal speed
+		hSpeed : ~~( canvas.width * 20 / 768 ),
+		move : function( dir ){
+			switch ( dir ){
+				case "left":
+					if( this.x - this.hSpeed > 0 ) {
+						this.x -= this.hSpeed;
+					}
+					break;
+				case "right":
+					if( this.x + this.hSpeed < (canvas.width - this.width) ) {
+						this.x += this.hSpeed;
+					}
+					break;
+			}
+		}
+	}
+	
+	var player = Object.create( jumper );
+	
+	var platform = {
+		image : "",
+		x : 50,
+		y : -45,
+		width : player.width * 1.2,
+		height : canvas.height / 1024 * 20,
+		type : "normal",
+		color : "#0F0",
+		render : function( ctx ){
+			switch( this.type ){
+				case "spike":
+					//var imgElement = this.getImgElement();
+					//ctx.drawImage( imgElement, this.x, this.y, this.width, this.height );
+					var spikeNum = 6;
+					var spikeWidth = ~~( this.width / spikeNum );
+					var spikeHeight = this.height;
+
+					for (var i = 0; i < spikeNum; i++) {
+						ctx.beginPath();
+						ctx.fillStyle = "DimGrey";
+						ctx.moveTo( this.x + i * spikeWidth, this.y + spikeHeight );
+						ctx.lineTo( this.x + i * spikeWidth + spikeWidth / 2, this.y );
+						ctx.lineTo( this.x + ( i + 1 ) * spikeWidth , this.y + spikeHeight );
+						ctx.fill();
+						ctx.closePath();
+					};
+					
+
+					break;
+				default:
+					ctx.beginPath();
+					ctx.fillStyle = this.color;
+					ctx.rect(this.x, this.y, this.width, this.height);
+					//var imgElement = this.getImgElement();
+
+					ctx.fill();
+					ctx.closePath();
+					break;
+			}
+		},
+		getImgElement : function(){
+			var img = document.createElement('img'); // use DOM HTMLImageElement
+			img.src = this.image;
+			img.alt = 'alt text';
+			return img;
+		},
+		onCollide : function(){
+			if( DEBUG_MODE )
+				this.color = "red";
+
+			player.fallStop();
+			switch( this.type ){
+				case "spring":
+					//player.jumpSpeed = ~~( 50 / 500 * canvas.height );
+					//player.jumpSpeed = 50;
+					player.jumpSpeed = ~~( 34 / 500 * canvas.height ) ;
+					break;
+				case "spike":
+					end();
+					break;
+				default:
+					break;
+			}
+		},
+	}
+
+	var SPRING_NUM = 2;
+	var SPIKE_NUM = 1;
+	var TOTAL_NUM = 20;
+
+	//to control the distribution for random generated platforms
+	var typeArray = {
+		content : null,
+		init : function(){
+			this.content = [];
+			for (var i = 0; i < SPRING_NUM; i++) {
+				this.content.push( "spring" );
+			};
+			for (var i = 0; i < SPIKE_NUM; i++) {
+				this.content.push( "spike" );
+			};
+			for (var i = 0; i < ( TOTAL_NUM - this.content.length ); i++) {
+				this.content.push( "normal" );
+			};
+		},
+		getRandomEntry : function(){
+			return this.content[ ~~( Math.random() * this.content.length ) ];
+		}
+	};
+	
+	
+	function generatePlatforms(){
+		var initY = 0;
+		for( index = 0; index < currentPlatformNum ; index++ ){
+			initY += ( canvas.height / currentPlatformNum );
+			var p = spawnPlatform( initY );
+			platformArray.push( p );
+		}
+	}
+	
+	function spawnPlatform( initY ){
+		var p = Object.create( platform );
+		p.y = initY;
+		p.x = Math.random() * ( canvas.width - p.width );
+
+		var spikeOnScrn = false;
+		for (var i = 0; i < platformArray.length; i++) {
+			if( platformArray[i].type == "spike" ){
+				spikeOnScrn = true;
+				break;
+			}
+		};
+
+		do{
+			p.type = typeArray.getRandomEntry();
+		} while ( spikeOnScrn && p.type == "spike");
+
+		switch( p.type ){
+			case "spring":
+				p.color = "blue";
+				break;
+			case "spike":
+				p.color = "black";
+				p.image = "spike.png";
+				break;
+			default:
+				p.color = "green";
+				break;
+		}
+		return p;
+	}
+	
+	function drawAllPlatforms(){
+		for( index = 0; index < platformArray.length ; index++ )
+			platformArray[index].render( context );
+		for( index = 0; index < tempPlatformArray.length; index++ )
+			tempPlatformArray[index].render( context );
+	}
+		
+	//init
+	globalInit();
+	
+	//register mouse listener
+	canvas.addEventListener("mousemove", mouseMoveHandler, false);
+	canvas.addEventListener("mousedown", mouseDownHandler, false);
+	//register touch listeners
+	canvas.addEventListener("touchstart", touchEventHandler, false);
+	canvas.addEventListener("touchend", touchEventHandler, false);
+	canvas.addEventListener("touchcancel", touchEventHandler, false);
+	canvas.addEventListener("touchmove", touchEventHandler, false);
+	
+	function mouseMoveHandler(e) {
+		var relativeX = e.clientX - canvas.offsetLeft;
+		if( !SUSPENDED ){
+			if( relativeX > player.x && relativeX - player.x > player.hSpeed ) {
+				//mouse on the RHS of player
+				player.move( "right" );
+			}else if ( relativeX < player.x && relativeX - player.x < player.hSpeed ){
+				//LHS of player
+				player.move( "left" );
+			}
+		}
+		
+	}
+
+	function mouseDownHandler( e ){
+		if( SUSPENDED ){
+			endScrnClick( e.offsetX, e.offsetY, "mouse" );
+			// console.log( e.offsetX, e.offsetY );
+		}
+	}
+	
+	function touchEventHandler(e) {
+		if (e.touches.length === 0 ) return;
+		e.preventDefault();
+		e.stopPropagation();
+		var touch = e.touches[0];
+		var relativeX = touch.clientX - canvas.offsetLeft;
+		
+		if( !SUSPENDED ){
+			if( relativeX > player.x  && relativeX - player.x > player.hSpeed ) {
+				//mouse on the RHS of player
+				player.move( "right" );
+			}else if ( relativeX < player.x && relativeX - player.x < player.hSpeed ){
+				//LHS of player
+				player.move( "left" );
+			}
+		} else {
+			// var startX = (canvas.width - endImg.width) / 2;
+			// var startY = (canvas.height - endImg.height) / 2;
+			endScrnClick( touch.clientX, touch.clientY, "touch" );
+		}
+		
+	}
+	
+	function checkCollision(){
+		for( index = 0; index < platformArray.length; index++ ){
+			var p = platformArray[index];
+			//only if player falling
+			if( player.isFalling ){
+				if( (player.x < p.x + p.width) && (player.x + player.width > p.x) && (player.y + player.height > p.y) && (player.y + player.height < p.y + p.height + 20 ) ){
+					platformArray[index].onCollide();
+				}
+			}
+		}
+	}
+	
+	function drawScore( ctx ){
+		context.fillStyle = "purple";
+		context.font = "30px Arial";
+		context.fillText(score, 40, 35);
+	}
+	
+	function updateCanvas(){
+		if( !SUSPENDED ){
+			//init canvas
+			clearCanvas();
+
+			//draw background
+			context.drawImage( backgroundImg, 0, 0, canvas.width, canvas.height );
+			
+			//check jump & fall
+			if( player.isJumping ) player.checkJump();
+			if( player.isFalling ) player.checkFall();
+			
+			drawAllPlatforms();
+			//draw player
+			player.render( context );
+			
+			checkCollision();
+			drawScore( context );
+		}
+		
+	}
+	
+	var backgroundImg = new Image();
+	backgroundImg.src = "sea.png";
+
+	//Global Init
+	function globalInit(){
+		document.body.setAttribute( "orient", "profile" );
+		currentPlatformNum = MAX_PLATFORM_NUM = 7;
+		typeArray.init();
+		platformArray = [];
+		score = 0;
+		currentY = 0;
+		player.init();
+		generatePlatforms();
+	}
+	
+	setInterval(updateCanvas, 25);
+	setInterval(decrementPlatformNum, 30000);
+
+	function submitResults( data )
+	{
+	    // $('.response .data').text('');
+	    // $('.status .data').text('Loading...');
+
+	    //var data = $('.results textarea.data').val();
+	    var dataobj = null;
+	    try
+	    {
+	        dataobj = JSON.parse( data );
+	        //console.log( dataobj );
+	    }
+	    catch(e)
+	    {
+	        //$('.status .data').text('Invalid JSON');
+	        // alert(" Invalid JSON");
+	        return;
+	    }
+	    
+	    window.eitWebapp.submitResult(data, function(success, response) {
+	        if(success){
+	            //$('.status .data').text('Succeeded.');
+	            // alert("Succeeded.");
+
+	            //console.log(response);
+	            //$('.response .data').text(JSON.stringify(response, null, 4));
+	            // alert("JSON.stringify(response, null, 4)");
+	        }
+	        else {
+	            //$('.status .data').text('Failed.');
+	            //alert("Failed");
+	        }
+	    });
+	}
+
+	function decrementPlatformNum(){
+		if( currentPlatformNum > MIN_PLATFORM_NUM ){
+			currentPlatformNum--;
+			var highest = 0;
+			for (var i = 0; i < platformArray.length; i++) {
+				if( platformArray[i].y > platformArray[highest].y ) highest = i;
+			};
+			platformArray.splice( highest, 1 );
+		}
+	}
+
+	function end(){
+		//alert( "Game Over! Your score is " + score + "." );
+		SUSPENDED = true;
+		submitResults( JSON.stringify( [ { "stage_num" : 1, "question_num" : 1, "score" : score, "correctness" : true, "student_answer" : score } ] ) );
+		//console.log( "died at " + player.y );
+		// var lowest = 0;
+		// for (var i = 0; i < platformArray.length; i++) {
+		// 	if( platformArray[i].y >= platformArray[lowest].y ) lowest = i;
+		// };
+		//console.log( "lowest platform : " + platformArray[lowest].y );
+		drawEndScrn();
+	}
+
+	function cleanUpTempPlatform(){
+		for (var i = 0; i < tempPlatformArray.length; i++) {
+			if( tempPlatformArray[i].y >= canvas.height ) tempPlatformArray.splice( i, 1 );
+		};
+	}
+
+	function clearCanvas(){
+		context.clearRect( 0, 0, canvas.width, canvas.height );
+	}
+</script>
+
+</body>
+</html>

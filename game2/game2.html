@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<!--references:
+	https://developer.mozilla.org/en-US/docs/Games/Workflows/2D_Breakout_game_pure_JavaScript/Mouse_controls
+	https://developer.mozilla.org/en-US/docs/Games/Workflows/2D_Breakout_game_pure_JavaScript
+	http://stackoverflow.com/questions/21705011/move-canvas-object-on-touchmove-in-javascript
+	http://stackoverflow.com/questions/20419297/collision-detection-between-two-squares-in-javascript
+-->
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>eat</title>
+    <style>
+    	* { padding: 0; margin: 0; }
+    	canvas { 
+    		background: url('./volcano.jpg') no-repeat center center fixed; 
+    		-webkit-background-size: cover;
+	        -moz-background-size: cover;
+	        -o-background-size: cover;
+	        background-size: cover;
+
+    		display: block; 
+    		margin: 0 auto;
+    	}
+    </style>
+</head>
+<body>
+
+<div style="position: relative;">
+	<canvas id="gameFrame" width="1024" height="768" style="position: absolute; left: 0; top: 0;"></canvas>
+</div>
+<h1 id = "debug"></h1>
+
+<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+<script type="text/javascript" src="ebook_api.js"></script>
+
+<script type="text/javascript">
+	//global var
+	var canvas = document.getElementById("gameFrame");
+	var context = canvas.getContext("2d");
+	//id to identify dino; id 0 represents player dino; -1 represents should not exists or uninit-ed
+	var id = 0;
+
+	var SUSPENDED = false;
+
+	var endImg = new Image();
+	endImg.src = "endScrn.png";
+
+	function drawEndScrn(){
+		var x = (canvas.width - endImg.width) / 2;
+		var y = (canvas.height - endImg.height) / 2;
+
+		setTimeout( function(){ 
+			clearCanvas(); 
+			context.drawImage( endImg, x, y, endImg.width, endImg.height );
+
+			//draw Score
+			var fontSize = 30;
+			context.textAlign = "center";
+			context.fillStyle = "white";
+			context.font = fontSize + "px Arial";
+			context.fillText( score, canvas.width / 2 , y + endImg.height * 0.25);
+		}, 10 );
+	}
+
+	function replay(){
+		SUSPENDED = false;
+		location.reload();
+	}
+
+	function home(){
+		history.back();
+	}
+
+	function endScrnClick( clickX, clickY ){
+		var startX = ( canvas.width - endImg.width ) / 2;
+		var startY = ( canvas.height - endImg.height ) / 2;
+
+		if( startY + endImg.height * 0.45 < clickY && clickY < startY + endImg.height * 0.8 ){
+			if( startX + endImg.width * 0.6 < clickX && clickX < startX + endImg.width * 0.8 ){
+				replay();
+			} else if( startX + endImg.width * 0.15 < clickX && clickX < startX + endImg.width * 0.35 ){
+				home();
+			}
+		}
+	}
+
+	canvas.width = 1024;
+	canvas.height = 768;
+
+	var canvasRatio = canvas.width / canvas.height;
+	var screenRatio = window.innerWidth / window.innerHeight;
+
+	if( screenRatio > canvasRatio ){
+		// canvas.width = canvas.width * window.innerHeight / canvas.height;
+		canvas.width = Math.min( 1024, canvas.width * window.innerHeight / canvas.height );
+		canvas.height = canvas.width / canvasRatio;
+	} else {
+		// canvas.width = window.innerWidth;
+		canvas.width = Math.min( 1024, window.innerWidth );
+		canvas.height = canvas.width / canvasRatio;
+	}
+
+
+	var score = 0;
+	
+	//max and min size of dinos
+	var MAXSIZE = Math.min( canvas.width, canvas.height ) * 0.5;
+	var MINSIZE = Math.min( canvas.width, canvas.height ) / 40;
+	var GROWTHFACTOR = 0.05;
+
+	var MAX_DINO_NUM = 5;
+	
+	// context.canvas.width = window.innerWidth;
+	// context.canvas.height = window.innerHeight;
+
+	var picArray = [ "dino_red.png", "dino_orange.png", "dino_yellow.png", "dino_green.png", "dino_blue.png", "dino_purple.png" ];
+
+	//array to store touches
+	var touchArray = new Array();
+	
+	var Dinosaur = {
+		side : null,
+		id : -1,
+		//reserve for image replacement
+		image : null,
+		//size of object
+		size : ((canvas.height > canvas.width) ? canvas.width / 20 : canvas.height / 20),
+		//position of object
+		x : canvas.width / 2, 
+		y : canvas.height / 2,
+		//speed of object(for key press)
+		speed : 15,
+		color : "#ff0000",
+		//flag to check mouse movement
+		moveable : false,
+		//constructor function
+		spawn : function( id, image, size, x, y, speed, color, side ){
+			this.id = id;
+			this.size = size;
+			this.x = x;
+			this.y = y;
+			this.speed = speed;
+			this.color = color;
+			this.side = side;
+			this.image = image;
+		},
+		render : function( ctx ){
+			ctx.beginPath();
+			//ctx.rect(this.x, this.y, this.size, this.size);
+			ctx.drawImage( this.getImgElement(), this.x, this.y, this.size, this.size );
+			
+			ctx.fillStyle = this.color;
+			ctx.fill();
+			ctx.closePath();
+		},
+		//move function
+		move : function( dir ){
+			switch ( dir ){
+				case "up":
+					if( this.y > 0 ) {
+						this.y -= this.speed;
+					}
+					break;
+				case "down":
+					if( this.y < (canvas.height - this.size) ) {
+						this.y += this.speed;
+					}
+					break;
+				case "left":
+					if( this.x > 0 ) {
+						this.x -= this.speed;
+					}
+					break;
+				case "right":
+					if( this.x < (canvas.width - this.size) ) {
+						this.x += this.speed;
+					}
+					break;
+				default:
+					break;
+			}
+		},
+		die : function(){
+			if( this.id == 0 ){
+				end();
+			}
+			this.id = -1;
+		},
+		touch : function( enemy ){
+			var al = this.x;
+			var ar = this.x + this.size;
+			var bl = enemy.x;
+			var br = enemy.x + enemy.size;
+			
+			var au = this.y;
+			var ad = this.y + this.size;
+			var bu = enemy.y;
+			var bd = enemy.y + enemy.size;
+			
+			if (bl > ar || br < al) {
+				return false;
+			} //overlap not possible
+			if (bu > ad || bd < au) {
+				return false;
+			} //overlap not possible 
+			return true;
+		},
+		eat : function( enemy ){
+			if( this.size >= enemy.size ){
+				score += enemy.size;
+				this.grow( GROWTHFACTOR * this.size );
+				enemy.die();
+			} else {
+				this.die();
+				//enemy.grow( GROWTHFACTOR );
+			}
+		},
+		grow : function( growFactor ){
+			//this.size = Math.floor( this.size * growFactor );
+			this.size += growFactor;
+		},
+		updatePos : function( i, j ){
+			this.x = i;
+			this.y = j;
+			for( index = 0 ; index < dinoList.length ; index++ ){
+				if( this.touch( dinoList[index] ) ){
+					this.eat( dinoList[index] );
+				}
+			}
+		},
+		getImgElement : function(){
+			var img = new Image();
+			img.src = this.image;
+			return img;
+		}
+	}
+
+	var player;
+	
+	//a list to store all non-player dino
+	var dinoList = [];
+
+	function drawAllDinos(){
+		for( index = 0 ; index < dinoList.length ; index++ ){
+			if( dinoList[index].id == -1 || ( dinoList[index].speed == 0 && dinoList[index].id != 0 ) ){
+				dinoList.splice( index, 1 );
+			} else {
+				dinoList[index].render( context );
+			}
+		}
+	}
+	
+	//init
+	globalInit();
+	
+	//register key listeners
+	// document.addEventListener("keydown", keyHandler, false);
+    // document.addEventListener("keyup", keyHandler, false);
+	//register mouse listener
+	canvas.addEventListener("mousedown", mouseDownHandler, false);
+	canvas.addEventListener("mousemove", mouseMoveHandler, false);
+	canvas.addEventListener("mouseup", mouseUpHandler, false);
+	//register touch listeners
+	canvas.addEventListener("touchstart", touchEventHandler, false);
+	canvas.addEventListener("touchend", touchEventHandler, false);
+	canvas.addEventListener("touchcancel", touchEventHandler, false);
+	canvas.addEventListener("touchmove", touchEventHandler, false);
+	
+	//listener functions
+	// function keyHandler(e) {
+ //        if(e.keyCode == 39) {
+	// 		player.move( "right" );
+ //        }
+ //        else if(e.keyCode == 37) {
+	// 		player.move( "left" );
+ //        }
+	// 	else if(e.keyCode == 38){
+	// 		player.move( "up" );
+	// 	}
+	// 	else if(e.keyCode == 40){
+	// 		player.move( "down" );
+	// 	}
+ //    }
+	
+	function mouseDownHandler(e) {
+		if( !SUSPENDED ){
+			if( (e.offsetX - player.x <= player.size) && (e.offsetY - player.y <= player.size) ){
+				player.moveable = true;
+			}
+		} else {
+			endScrnClick( e.offsetX, e.offsetY );
+		}
+	}
+	
+	function mouseMoveHandler(e) {
+		if( !SUSPENDED ){
+			if( player.moveable ){
+				player.updatePos( e.offsetX, e.offsetY );
+			}
+		}
+	}
+	
+	function mouseUpHandler(e) {
+		if( !SUSPENDED )
+			player.moveable = false;
+	}
+	
+	function touchEventHandler(e) {
+		if (e.touches.length === 0 ) return;
+		e.preventDefault();
+		e.stopPropagation();
+		var touch = e.touches[0];
+
+		if( !SUSPENDED ){
+			player.updatePos( touch.clientX, touch.clientY );
+		} else {
+			endScrnClick( touch.clientX, touch.clientY );
+		}
+		
+	}
+	
+	function globalInit(){
+		id = 0; 
+		score = 0;
+		player = Object.create( Dinosaur );
+		player.spawn( 0, "dino_black.png", ~~(canvas.width / 20), ~~(canvas.width / 2), ~~(canvas.height / 2), 15, "red", null );
+		player.moveable = false;
+		
+		dinoList = [];
+	}
+	
+	function generateDino(){
+		//limit number of dino
+		if( dinoList.length < MAX_DINO_NUM ){
+			id++;
+
+			var side = ( Math.random() > 0.5 ? "RHS" : "LHS" );
+			var size = ~~( Math.random() * ( MAXSIZE - MINSIZE ) + MINSIZE );
+			var speed = ~~( ( ( MAXSIZE - size ) - MINSIZE) / ( MAXSIZE - MINSIZE ) * 4 + 1 );
+			
+			var x = ( side == "RHS" ? canvas.width + size + 10 : -size - 10 );
+			var y = ~~( Math.random() * (canvas.height - size) );
+			
+			var newDino = Object.create( Dinosaur );
+
+			var imageSrc = "dino_red.png";
+			if( id != 0 )
+				imageSrc = picArray[ ~~( Math.random() * picArray.length ) ];
+			newDino.spawn( id, imageSrc, size, x, y, speed , getRandomColor(), side );
+			newDino.moveable = false;
+
+			if( newDino.touch( player ) ){
+				newDino.die();
+			} else {
+				dinoList.push( newDino );
+			}
+			
+		}
+	}
+
+	function moveDinos(){
+		for (var i = 0; i < dinoList.length; i++ ) {
+			switch( dinoList[i].side ){
+				case "LHS":
+					if( dinoList[i].x < canvas.width + MINSIZE ){
+						dinoList[i].x += dinoList[i].speed;
+					} else {
+						dinoList[i].die();
+					}
+					break;
+				case "RHS":
+					if( dinoList[i].x > -MINSIZE ){
+						dinoList[i].x -= dinoList[i].speed;
+					} else {
+						dinoList[i].die();
+					}
+					break;
+				default:
+					dinoList[i].die();
+					break;
+			}
+
+		};
+	}
+
+	function collisionDetection(){
+		for (var i = 0; i < dinoList.length; i++) {
+			if ( player.touch( dinoList[i] ) )
+				player.eat( dinoList[i] );
+		};
+	}
+	
+	function submitResults( data )
+	{
+	    // $('.response .data').text('');
+	    // $('.status .data').text('Loading...');
+
+	    //var data = $('.results textarea.data').val();
+	    var dataobj = null;
+	    try
+	    {
+	        dataobj = JSON.parse( data );
+	        console.log( dataobj );
+	    }
+	    catch(e)
+	    {
+	        //$('.status .data').text('Invalid JSON');
+	        //alert(" Invalid JSON");
+	        return;
+	    }
+	    
+	    window.eitWebapp.submitResult(data, function(success, response) {
+	        if(success){
+	            //$('.status .data').text('Succeeded.');
+	            //alert("Succeeded.");
+
+	            console.log(response);
+	            //$('.response .data').text(JSON.stringify(response, null, 4));
+	            //alert("JSON.stringify(response, null, 4)");
+	        }
+	        else {
+	            //$('.status .data').text('Failed.');
+	            //alert("Failed");
+	        }
+	    });
+	}
+
+	function drawScore(){
+		context.textAlign = "center";
+		context.fillStyle = "red";
+		context.font = "30px Arial";
+		context.fillText(score, 40, 35);
+	}
+
+	function updateCanvas(){
+		if( !SUSPENDED ){
+			//init canvas
+			clearCanvas();
+
+			collisionDetection();
+
+			generateDino();
+
+			moveDinos();
+			//draw other dinos
+			drawAllDinos();
+			//draw player Dinosaur
+			player.render( context );
+
+			drawScore();
+
+			//drawDebugText();
+
+			//win?
+			if( player.size >= canvas.height * 0.75 && player.size >= canvas.width * 0.75 ){
+				alert( "you won! Your score is " + score + "." );
+				submitResults( JSON.stringify( { "score" : score } ) );
+				globalInit();
+			}
+		}		
+		
+	}
+
+	setInterval(updateCanvas, 10);
+
+	// function log( msg ){
+	// 	if( debugMsg.length > 10 ){
+	// 		debugMsg.splice( 0, 1 );
+	// 	}
+	// 	debugMsg.push( msg );
+	// }
+
+	// var debugMsg = [];
+
+	// function drawDebugText(){
+	// 	context.fillStyle = "black";
+	// 	context.font = "30px Arial";
+	// 	for (var i = 0; i < dinoList.length; i++) {
+	// 		var text = dinoList[i].x + "," + dinoList[i].y + "," + dinoList[i].speed ;
+	// 		context.fillText(text, canvas.width - 200, (i+1) * 35);
+	// 	};
+
+	// 	var text = canvas.width + "x" + canvas.height;
+	// 	context.fillText(text, 5, canvas.height - 35);
+
+	// 	for (var i = 0; i < debugMsg.length; i++) {
+	// 		context.fillText(debugMsg[i], canvas.width - 400, canvas.height - (10 - i) * 35);
+	// 	};
+	// }
+
+	function getRandomColor() {
+	    var letters = '0123456789ABCDEF'.split('');
+	    var color = '#';
+	    for (var i = 0; i < 6; i++ ) {
+	        color += letters[Math.floor(Math.random() * 16)];
+	    }
+	    return color;
+	}
+
+	function end(){
+		//alert( "Game Over! Your Score is " + score + "." );
+		SUSPENDED = true;
+		submitResults( JSON.stringify( [ { "stage_num" : 1, "question_num" : 1, "score" : score, "correctness" : true, "student_answer" : score } ] ) );
+		drawEndScrn();
+		//globalInit();
+	}
+
+	function clearCanvas(){
+		context.clearRect( 0, 0, canvas.width, canvas.height );
+	}
+</script>
+
+</body>
+</html>

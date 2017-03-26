@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<!--references:
+	https://developer.mozilla.org/en-US/docs/Games/Workflows/2D_Breakout_game_pure_JavaScript/Mouse_controls
+	https://developer.mozilla.org/en-US/docs/Games/Workflows/2D_Breakout_game_pure_JavaScript
+	http://stackoverflow.com/questions/21705011/move-canvas-object-on-touchmove-in-javascript
+
+-->
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>pong</title>
+    <style>
+    	* { padding: 0; margin: 0; }
+    	#gameFrame { 
+    		/*background: url('./background_1024x768.png'); */
+    		background: url('./background_1024x768.png') no-repeat center center fixed; 
+    		-webkit-background-size: cover;
+	        -moz-background-size: cover;
+	        -o-background-size: cover;
+	        background-size: cover;
+
+    		display: block; 
+    		margin: 0 auto; 
+    	}
+    </style>
+</head>
+<body>
+
+<div style="position: relative;">
+	<canvas id="gameFrame" width="1024" height="768" style="position: absolute; left: 0; top: 0;"></canvas>
+</div>
+
+<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+<script type="text/javascript" src="ebook_api.js"></script>
+
+<script type="text/javascript">
+	var canvas = document.getElementById("gameFrame");
+	var context = canvas.getContext("2d");
+
+	var score = 0;
+
+	var SUSPENDED = false;
+
+	var endImg = new Image();
+	endImg.src = "endScrn.png";
+
+	function drawEndScrn(){
+		var x = (canvas.width - endImg.width) / 2;
+		var y = (canvas.height - endImg.height) / 2;
+		setTimeout( function(){ 
+			clearCanvas(); 
+			context.drawImage( endImg, x, y, endImg.width, endImg.height );
+
+			//draw Score
+			var fontSize = 30;
+			context.textAlign = "center";
+			context.fillStyle = "white";
+			context.font = fontSize + "px Arial";
+			context.fillText( score, canvas.width / 2 , y + endImg.height * 0.25);
+		}, 10 );
+	}
+
+	function replay(){
+		SUSPENDED = false;
+		location.reload();
+	}
+
+	function home(){
+		history.back();
+	}
+	
+	canvas.width = 1024;
+	canvas.height = 768;
+
+	var canvasRatio = canvas.width / canvas.height;
+	var screenRatio = window.innerWidth / window.innerHeight;
+
+	if( screenRatio > canvasRatio ){
+		// canvas.width = canvas.width * window.innerHeight / canvas.height;
+		canvas.width = Math.min( 1024, canvas.width * window.innerHeight / canvas.height );
+		canvas.height = canvas.width / canvasRatio;
+	} else {
+		// canvas.width = window.innerWidth;
+		canvas.width = Math.min( 1024, window.innerWidth );
+		canvas.height = canvas.width / canvasRatio;
+	}
+
+
+	var ball = {
+		//reserve for image replacement
+		image : "8ball.png",
+		//size of ball
+		size : null,
+		//position of ball
+		x : canvas.width / 2, 
+		y : canvas.height - Math.max( this.size, 30 ),
+		//horizontal and vertical speed of ball
+		dx : null,
+		dy : null,
+		//color of ball
+		color : "#0095DD",
+		//function to update position of ball
+		updatePos : function(i,j) {
+			this.x = i;
+			this.y = j;
+		},
+		//function to move ball
+		//minX, minY, maxX, maxY for bound check
+		move : function( minX, minY, maxX, maxY ){
+			//speed check
+			if( this.dx == 0 && this.dy == 0){
+				//revert speed to normal
+				this.dx = -2;
+				this.dy = -2;
+			}
+			//wall collision
+			if( (this.x + this.dx) < minX || (this.x + this.dx) > maxX ){
+				this.dx = -this.dx;
+			}
+			if( (this.y + this.dy) < minY ){
+				this.dy = -this.dy;
+			}else if( (this.y + this.dy) > maxY ){
+				if( this.x > paddle.x && this.x < paddle.x + paddle.width) {
+					//paddle touched
+					this.dy = -this.dy;
+					score++;
+				} else {
+					//bottom line touched
+					end();
+				}
+			}
+			//move ball
+			this.updatePos( this.x + this.dx, this.y + this.dy );
+		},
+		//function to draw the ball on canvas
+		//input context to specify canvas
+		render : function( ctx ){
+			ctx.beginPath();
+			//ctx.arc(this.x, this.y, this.size, 0, Math.PI*2);
+			//ctx.fillStyle = this.color;
+			//ctx.fill();
+			ctx.drawImage( this.getImgElement(), this.x, this.y, this.size, this.size );
+			ctx.closePath();
+		},
+		//Init
+		init : function(){
+			this.size = Math.min( canvas.width, canvas.height ) / 30;
+			this.updatePos( canvas.width / 2, canvas.height - Math.max(30, this.size) - 10 );
+			var speed = ~~( Math.min( canvas.width, canvas.height, 500 ) / 100 );
+			this.dx = (Math.random() > 0.5 ? -speed : speed );
+			this.dy = -speed;
+		},
+		getImgElement : function(){
+			var img = document.createElement('img'); // use DOM HTMLImageElement
+			img.src = this.image;
+			img.alt = 'alt text';
+			img.width = this.size;
+			img.height = this.size;
+			return img;
+		},
+	}
+	
+	var paddle = {
+		//reserve for image replacement
+		image : "./homebutton.png",
+		//size of paddle
+		width : 75,
+		height : 10,
+		//position of paddle
+		x : 50, 
+		y : 50,
+		//speed of paddle(for key press)
+		speed : 15,
+		//color of paddle
+		color : "#00FF00",
+		///function to update position of paddle
+		updatePos : function(i,j) {
+			this.x = i;
+			this.y = j;
+		},
+		render : function( ctx ){
+			//document.body.appendChild(img);
+			//var imgElement = this.getImgElement();
+			ctx.beginPath();
+			ctx.rect(this.x, this.y, this.width, this.height);
+			//ctx.drawImage( imgElement, this.x, canvas.height - imgElement.height, imgElement.width, imgElement.height);
+			ctx.fillStyle = this.color;
+			ctx.fill();
+			ctx.closePath();
+		},
+		goLeft : function(){
+			if( this.x > 0 ) {
+				this.x -= this.speed;
+			}
+		},
+		goRight : function(){
+			if( this.x < (canvas.width - this.width) ) {
+				this.x += this.speed;
+			}
+		},
+		//Init
+		init : function(){
+			this.width = canvas.width / 5;
+			//this.height = 
+			this.updatePos( (canvas.width - paddle.width) / 2, canvas.height - paddle.height );
+		}
+	}	
+	
+	function updateCanvas(){
+		if( !SUSPENDED ){	
+			//init canvas
+			clearCanvas();
+			//move ball
+			ball.move( ball.size, ball.size, canvas.width - ball.size, canvas.height - ball.size );
+			//draw ball
+			ball.render( context );
+			//draw paddle
+			paddle.render( context );
+			//draw score
+			drawScore();
+		}
+	}
+
+	function drawScore(){
+		context.textAlign = "center";
+		context.fillStyle = "aqua";
+		context.font = "30px Arial";
+		context.fillText(score, 40, 35);
+	}
+	
+	//init
+	globalInit();
+	
+	//register key listeners
+	// canvas.addEventListener("keydown", keyDownHandler, false);
+	//register mouse listener
+	canvas.addEventListener("mousemove", mouseMoveHandler, false);
+	canvas.addEventListener("mousedown", mouseDownHandler, false);
+	//register touch listeners
+	canvas.addEventListener("touchstart", touchEventHandler, false);
+	canvas.addEventListener("touchend", touchEventHandler, false);
+	canvas.addEventListener("touchcancel", touchEventHandler, false);
+	canvas.addEventListener("touchmove", touchEventHandler, false);
+	
+	//listener functions
+	// function keyDownHandler(e) {
+	// 	if( !SUSPENDED ){
+	// 		if(e.keyCode == 39) {
+	//             //paddle.goRight = true;
+	// 			paddle.goRight();
+	//         }
+	//         else if(e.keyCode == 37) {
+	//             //paddle.goLeft = true;
+	// 			paddle.goLeft();
+	//         }
+	// 	}
+ //    }
+	
+	function mouseMoveHandler(e) {
+		var relativeX = e.clientX - canvas.offsetLeft;
+
+		if( !SUSPENDED ){
+			if( relativeX > 0 && relativeX < canvas.width ) {
+				paddle.updatePos( (relativeX - paddle.width / 2) , paddle.y );
+			}
+		}
+			
+	}
+
+	function mouseDownHandler( e ){
+		if( SUSPENDED )
+			endScrnClick( e.offsetX, e.offsetY );
+	}
+	
+	function touchEventHandler(e) {
+		//console.log( e.type );
+		if (e.touches.length === 0 ) return;
+		e.preventDefault();
+		e.stopPropagation();
+		var touch = e.touches[0];
+		
+		var relativeX = touch.clientX - canvas.offsetLeft;
+		var relativeY = touch.clientY - canvas.offsetTop;
+		
+		if( !SUSPENDED ){
+			if( relativeX > 0 && relativeX < canvas.width && relativeY > 0 && relativeY < canvas.height ) {
+				paddle.updatePos( (relativeX - paddle.width / 2) , paddle.y );
+			}
+		} else {
+			endScrnClick( touch.clientX, touch.clientY );
+		}
+		
+	}
+
+	function endScrnClick( clickX, clickY ){
+		var startX = ( canvas.width - endImg.width ) / 2;
+		var startY = ( canvas.height - endImg.height ) / 2;
+
+		if( startY + endImg.height * 0.45 < clickY && clickY < startY + endImg.height * 0.8 ){
+			if( startX + endImg.width * 0.6 < clickX && clickX < startX + endImg.width * 0.8 ){
+				replay();
+			} else if( startX + endImg.width * 0.15 < clickX && clickX < startX + endImg.width * 0.35 ){
+				home();
+			}
+		}
+	}
+	
+	//Global Init
+	function globalInit(){
+		ball.init();
+		paddle.init();
+		score = 0;
+	}
+	
+	setInterval(updateCanvas, 10);
+
+	function submitResults( data )
+	{
+	    // $('.response .data').text('');
+	    // $('.status .data').text('Loading...');
+
+	    //var data = $('.results textarea.data').val();
+	    var dataobj = null;
+	    try
+	    {
+	        dataobj = JSON.parse( data );
+	        console.log( dataobj );
+	    }
+	    catch(e)
+	    {
+	        //$('.status .data').text('Invalid JSON');
+	        // alert(" Invalid JSON");
+	        return;
+	    }
+	    window.eitWebapp.submitResult(data, function(success, response) {
+	        if(success){
+	            //$('.status .data').text('Succeeded.');
+	            // alert("Succeeded.");
+
+	            console.log(response);
+	            //$('.response .data').text(JSON.stringify(response, null, 4));
+	            // alert("JSON.stringify(response, null, 4)");
+	        }
+	        else {
+	            //$('.status .data').text('Failed.');
+	            // alert("Failed");
+	        }
+	    });
+	}
+
+	function end(){
+		SUSPENDED = true;
+		submitResults( JSON.stringify( [ { "stage_num" : 1, "question_num" : 1, "score" : score, "correctness" : true, "student_answer" : score } ] ) );
+		drawEndScrn();
+	}
+
+	function clearCanvas(){
+		context.clearRect( 0, 0, canvas.width, canvas.height );
+	}
+
+</script>
+
+</body>
+</html>
